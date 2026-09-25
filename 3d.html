@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Roybon en 3D</title>
+<meta name="theme-color" content="#2f5d3a">
+<link rel="icon" href="icon.svg">
+<style>
+:root { --card:#fff; --fg:#18261b; --muted:#66756a; --line:#dfe6df; --accent:#2f5d3a; --accent-soft:#dcefdc; --shadow:0 4px 18px rgba(20,40,25,.18); }
+@media (prefers-color-scheme: dark) { :root { --card:#1b271d; --fg:#e8efe8; --muted:#9aa89d; --line:#2c3a2e; --accent:#5fa36f; --accent-soft:#233b28; --shadow:0 4px 18px rgba(0,0,0,.5); } }
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { margin:0; height:100%; overflow:hidden; background:#bcd9f0; font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif; color:var(--fg); touch-action:none; }
+canvas { display:block; }
+.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.hud { position:fixed; top:12px; left:12px; z-index:10; background:var(--card); border-radius:16px; box-shadow:var(--shadow); padding:12px; width:280px; }
+.hud h1 { margin:0 0 2px; font-size:1rem; display:flex; align-items:center; gap:8px; }
+.hud .sub { font-size:.78rem; color:var(--muted); margin-bottom:10px; }
+.row { display:flex; gap:6px; }
+.row a, .row button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:9px 6px; border-radius:10px; border:0; background:var(--accent-soft); color:var(--accent); font:600 .8rem system-ui; font-family:inherit; text-decoration:none; cursor:pointer; }
+.seg { display:flex; background:var(--accent-soft); border-radius:10px; padding:3px; margin-top:8px; }
+.seg button { flex:1; border:0; background:none; padding:8px; border-radius:8px; font:600 .8rem system-ui; font-family:inherit; color:var(--accent); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; }
+.seg button.on { background:var(--accent); color:#fff; }
+.help { font-size:.75rem; color:var(--muted); margin-top:8px; line-height:1.4; }
+#loading { position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; background:#2f5d3a; color:#fff; font-size:.95rem; }
+#loading .spin { width:36px; height:36px; border:3px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin 1s linear infinite; }
+#loading .bar { width:220px; height:4px; background:rgba(255,255,255,.2); border-radius:2px; overflow:hidden; } #loading .bar div { height:100%; width:0; background:#fff; transition:width .2s; }
+@keyframes spin { to { transform:rotate(360deg); } }
+#tip { position:fixed; z-index:20; pointer-events:none; background:rgba(0,0,0,.72); color:#fff; padding:5px 10px; border-radius:8px; font-size:.8rem; font-weight:600; white-space:nowrap; transform:translate(-50%, -140%); }
+#cross { position:fixed; left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; z-index:15; pointer-events:none; }
+#cross::before, #cross::after { content:""; position:absolute; background:rgba(255,255,255,.9); box-shadow:0 0 2px #000; } #cross::before { left:6px; top:0; width:2px; height:14px; } #cross::after { top:6px; left:0; height:2px; width:14px; }
+#joy { position:fixed; left:24px; bottom:calc(24px + env(safe-area-inset-bottom)); width:120px; height:120px; border-radius:50%; background:rgba(255,255,255,.22); border:2px solid rgba(255,255,255,.5); z-index:15; backdrop-filter:blur(3px); }
+#joy div { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%; background:rgba(255,255,255,.85); box-shadow:0 2px 8px rgba(0,0,0,.3); }
+.card { position:fixed; z-index:30; right:12px; top:12px; width:300px; background:var(--card); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; }
+.card .ph { display:grid; grid-template-columns:repeat(2,1fr); gap:2px; background:var(--line); } .card .ph img { width:100%; aspect-ratio:1; object-fit:cover; display:block; } .card .ph img:only-child { grid-column:span 2; aspect-ratio:4/3; }
+.card .body { padding:14px 16px; } .card h2 { margin:0; font-size:1.1rem; } .card .sci { color:var(--muted); font-style:italic; font-size:.9rem; }
+.card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:12px 0 0; font-size:.85rem; } .card dt { color:var(--muted); } .card dd { margin:0; }
+.card .close { position:absolute; top:8px; right:8px; width:32px; height:32px; border-radius:50%; border:0; background:rgba(0,0,0,.5); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.hidden { display:none !important; }
+.warn { font-size:.75rem; color:#b8860b; margin-top:6px; }
+@media (max-width: 700px) { .hud { right:12px; width:auto; } .card { left:12px; right:12px; width:auto; top:auto; bottom:calc(12px + env(safe-area-inset-bottom)); } .card .ph img { aspect-ratio:16/10; } .hud .help { display:none; } }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-trees" viewBox="0 0 24 24"><path d="M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z"/><path d="M7 16v6"/><path d="M13 19v3"/><path d="M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+  <symbol id="i-orbit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 12a9 4 0 1 0 18 0 9 4 0 1 0-18 0"/></symbol>
+  <symbol id="i-walk" viewBox="0 0 24 24"><circle cx="13" cy="4" r="2"/><path d="m9 20 3-6 3 2v4"/><path d="m6 12 3-4 4 1 3 3 3 1"/><path d="m12 14-1-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+</svg>
+
+<div id="loading"><div class="spin"></div><div id="load-text">Chargement des arbres…</div><div class="bar"><div id="load-bar"></div></div></div>
+
+<div class="hud">
+  <h1><svg class="i"><use href="#i-trees"/></svg>Roybon en 3D</h1>
+  <div class="sub" id="sub"></div>
+  <div class="row">
+    <a href="./"><svg class="i"><use href="#i-back"/></svg>Saisie</a>
+    <a href="plan.html"><svg class="i"><use href="#i-map"/></svg>Plan 2D</a>
+  </div>
+  <div class="seg">
+    <button id="m-orbit" class="on"><svg class="i"><use href="#i-orbit"/></svg>Survol</button>
+    <button id="m-walk"><svg class="i"><use href="#i-walk"/></svg>Balade</button>
+  </div>
+  <div class="help" id="help"></div>
+  <div class="warn hidden" id="warn"></div>
+</div>
+
+<div id="tip" class="hidden"></div>
+<div id="cross" class="hidden"></div>
+<div id="joy" class="hidden"><div></div></div>
+
+<div class="card hidden" id="card">
+  <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
+  <div class="ph" id="card-ph"></div>
+  <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl></div>
+</div>
+
+<script src="data.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const D = window.RoybonData, $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const isTouch = matchMedia('(pointer: coarse)').matches;
+const progress = (txt, p) => { $('#load-text').textContent = txt; $('#load-bar').style.width = Math.round(p * 100) + '%'; };
+const warn = msg => { const w = $('#warn'); w.classList.remove('hidden'); w.innerHTML += (w.innerHTML ? '<br>' : '') + esc(msg); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- 1. Arbres et emprise ----------
+progress('Chargement des arbres…', .05);
+const { trees } = await D.loadTrees();
+let lat0, lon0;
+if (trees.length) { lat0 = trees.reduce((s, t) => s + t.lat, 0) / trees.length; lon0 = trees.reduce((s, t) => s + t.lon, 0) / trees.length; }
+else { [lat0, lon0] = D.DEFAULT_CENTER; warn('Aucun arbre enregistré : affichage du terrain seul.'); }
+const phi = lat0 * Math.PI / 180;
+const mLat = 111132.954 - 559.822 * Math.cos(2 * phi) + 1.175 * Math.cos(4 * phi);
+const mLon = 111412.84 * Math.cos(phi) - 93.5 * Math.cos(3 * phi);
+const toLocal = (lat, lon) => ({ x: (lon - lon0) * mLon, z: -(lat - lat0) * mLat });
+let ext = 0; for (const t of trees) { const p = toLocal(t.lat, t.lon); ext = Math.max(ext, Math.abs(p.x), Math.abs(p.z)); }
+const S = Math.max(160, Math.ceil(ext + 70));          // demi-côté de la zone, en mètres
+const latMin = lat0 - S / mLat, latMax = lat0 + S / mLat, lonMin = lon0 - S / mLon, lonMax = lon0 + S / mLon;
+$('#sub').textContent = `${trees.length} arbres · zone de ${Math.round(2 * S)} m de côté`;
+
+// ---------- 2. Relief (IGN RGE ALTI, 1 m) ----------
+const N = 56;
+async function loadElevation() {
+  const key = `terrain:${lat0.toFixed(5)}:${lon0.toFixed(5)}:${S}:${N}`;
+  try { const c = JSON.parse(localStorage.getItem(key)); if (c && c.length === N * N) return c; } catch (e) {}
+  const lats = [], lons = [];
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) { lats.push((latMax - (latMax - latMin) * i / (N - 1)).toFixed(7)); lons.push((lonMin + (lonMax - lonMin) * j / (N - 1)).toFixed(7)); }
+  const out = []; const CH = 150;
+  for (let k = 0; k < lats.length; k += CH) {
+    progress('Relief IGN…', .1 + .5 * k / lats.length);
+    const url = `https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json?lon=${lons.slice(k, k + CH).join('|')}&lat=${lats.slice(k, k + CH).join('|')}&resource=ign_rge_alti_wld&zonly=true&delimiter=|`;
+    let ok = false;
+    for (let a = 0; a < 3 && !ok; a++) {
+      try { const r = await fetch(url); if (r.ok) { const j = await r.json(); for (const z of j.elevations) out.push(typeof z === 'number' ? z : z.z); ok = true; } else await sleep(600); } catch (e) { await sleep(600); }
+    }
+    if (!ok) throw new Error('relief');
+    await sleep(210); // limite IGN : 5 requêtes / s
+  }
+  const valid = out.filter(z => z > -1000); const fill = valid.length ? valid.reduce((a, b) => a + b) / valid.length : 0;
+  const h = out.map(z => z > -1000 ? z : fill);
+  try { localStorage.setItem(key, JSON.stringify(h)); } catch (e) {}
+  return h;
+}
+let H;
+try { H = await loadElevation(); } catch (e) { H = new Array(N * N).fill(0); warn('Relief IGN indisponible : terrain plat.'); }
+const hMin = Math.min(...H); H = H.map(z => z - hMin);
+function groundAt(x, z) {
+  const fj = Math.min(N - 1.001, Math.max(0, (x + S) / (2 * S) * (N - 1))), fi = Math.min(N - 1.001, Math.max(0, (z + S) / (2 * S) * (N - 1)));
+  const i = Math.floor(fi), j = Math.floor(fj), di = fi - i, dj = fj - j;
+  const a = H[i * N + j], b = H[i * N + j + 1], c = H[(i + 1) * N + j], d = H[(i + 1) * N + j + 1];
+  return a * (1 - di) * (1 - dj) + b * (1 - di) * dj + c * di * (1 - dj) + d * di * dj;
+}
+
+// ---------- 3. Scène ----------
+progress('Construction de la scène…', .62);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const SKY = new THREE.Color('#bcd9f0'); scene.background = SKY; scene.fog = new THREE.Fog(SKY, S * 1.3, S * 4.5);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, S * 8);
+scene.add(new THREE.HemisphereLight('#dcecff', '#7d8a5a', 1.35));
+const sun = new THREE.DirectionalLight('#fff2dc', 2.4); sun.position.set(-S * .6, S * 1.1, S * .5); sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096); Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 1, far: S * 4 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
+scene.add(sun);
+
+// Terrain + orthophoto IGN
+const R = 6378137, merc = (lat, lon) => [R * lon * Math.PI / 180, R * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))];
+const [mx0, my0] = merc(latMin, lonMin), [mx1, my1] = merc(latMax, lonMax);
+const tGeo = new THREE.PlaneGeometry(2 * S, 2 * S, N - 1, N - 1); tGeo.rotateX(-Math.PI / 2);
+const pos = tGeo.attributes.position, uv = tGeo.attributes.uv;
+for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+  const k = i * N + j; pos.setY(k, H[k]);
+  const [mx, my] = merc(latMax - (latMax - latMin) * i / (N - 1), lonMin + (lonMax - lonMin) * j / (N - 1));
+  uv.setXY(k, (mx - mx0) / (mx1 - mx0), (my - my0) / (my1 - my0));
+}
+tGeo.computeVertexNormals();
+const tMat = new THREE.MeshStandardMaterial({ color: '#7a9a55', roughness: 1 });
+const terrain = new THREE.Mesh(tGeo, tMat); terrain.receiveShadow = true; scene.add(terrain);
+const orthoURL = `https://data.geopf.fr/wms-r?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ORTHOIMAGERY.ORTHOPHOTOS&STYLES=&CRS=EPSG:3857&BBOX=${mx0},${my0},${mx1},${my1}&WIDTH=2048&HEIGHT=2048&FORMAT=image/jpeg`;
+new THREE.TextureLoader().setCrossOrigin('anonymous').load(orthoURL, tex => {
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tMat.map = tex; tMat.color.set('#ffffff'); tMat.needsUpdate = true;
+}, undefined, () => warn('Photo aérienne indisponible : sol uni.'));
+// Sol lointain pour éviter le vide au-delà de la zone
+const far = new THREE.Mesh(new THREE.RingGeometry(S * 1.41, S * 8, 64, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#6d8a4c', roughness: 1 }));
+far.position.y = Math.min(...[H[0], H[N - 1], H[N * N - 1], H[N * (N - 1)]]) - 0.5; scene.add(far);
+const skirt = new THREE.Mesh(new THREE.PlaneGeometry(S * 2.9, S * 2.9).rotateX(-Math.PI / 2), far.material); skirt.position.y = far.position.y - 0.05; scene.add(skirt);
+
+// ---------- 4. Bâtiments (BD TOPO, avec hauteur) ----------
+progress('Bâtiments IGN…', .7);
+try {
+  const url = `https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:batiment&OUTPUTFORMAT=application/json&SRSNAME=EPSG:4326&COUNT=400&BBOX=${latMin},${lonMin},${latMax},${lonMax},urn:ogc:def:crs:EPSG::4326`;
+  const gj = await (await fetch(url)).json();
+  const wall = new THREE.MeshStandardMaterial({ color: '#e8dcc4', roughness: .9 }), roof = new THREE.MeshStandardMaterial({ color: '#9a4f3a', roughness: .8 });
+  const ll = c => Math.abs(c[0] - lat0) < Math.abs(c[1] - lat0) ? toLocal(c[0], c[1]) : toLocal(c[1], c[0]);
+  let n = 0;
+  for (const f of gj.features || []) {
+    const g = f.geometry; if (!g) continue;
+    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    const hgt = +(f.properties && f.properties.hauteur) || 6;
+    for (const rings of polys) {
+      const pts = rings[0].map(ll); if (pts.length < 3) continue;
+      const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p.x, -p.z)));
+      for (const hole of rings.slice(1)) shape.holes.push(new THREE.Path(hole.map(ll).map(p => new THREE.Vector2(p.x, -p.z))));
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: hgt, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
+      const base = Math.min(...pts.map(p => groundAt(p.x, p.z)));
+      const m = new THREE.Mesh(geo, [roof, wall]); m.position.y = base - 0.3; m.castShadow = m.receiveShadow = true; scene.add(m); n++;
+    }
+  }
+  if (n) $('#sub').textContent += ` · ${n} bâtiments`;
+} catch (e) { warn('Bâtiments IGN indisponibles.'); }
+
+// ---------- 5. Arbres ----------
+progress('Plantation des arbres…', .85);
+const rnd = seed => { let s = 0; for (const c of seed) s = (s * 31 + c.charCodeAt(0)) >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
+function blob(r, detail = 2) {
+  const parts = [];
+  for (let k = 0; k < 4; k++) {
+    const g = new THREE.IcosahedronGeometry(k ? .55 + r() * .2 : 1, detail);
+    const p = g.attributes.position;
+    const o1 = r() * 10, o2 = r() * 10; // même déformation pour les sommets partagés : pas de faces détachées
+    for (let v = 0; v < p.count; v++) { const x = p.getX(v), y = p.getY(v), z = p.getZ(v); const s = 1 + .12 * Math.sin(x * 4.1 + o1 + y * 2.3) * Math.cos(z * 3.7 + o2 - y * 1.9); p.setXYZ(v, x * s, y * s, z * s); }
+    if (k) { const a = r() * Math.PI * 2; g.translate(Math.cos(a) * .55, (r() - .3) * .5, Math.sin(a) * .55); }
+    parts.push(g);
+  }
+  const m = mergeGeometries(parts.map(g => g.toNonIndexed())); m.computeVertexNormals(); return m;
+}
+const trunkMats = { bark: new THREE.MeshStandardMaterial({ color: '#5a4332', roughness: 1 }), birch: new THREE.MeshStandardMaterial({ color: '#e6e2d8', roughness: .9 }) };
+const crownMats = new Map();
+function crownMat(hex, r) {
+  const c = new THREE.Color(hex); c.offsetHSL((r() - .5) * .03, (r() - .5) * .08, (r() - .5) * .06);
+  const k = c.getHexString(); if (!crownMats.has(k)) crownMats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: .85, flatShading: true })); return crownMats.get(k);
+}
+const pickables = [];
+function makeTree(t) {
+  const tr = D.traits(t), r = rnd(t.id), h = tr.height * (.85 + r() * .3), c = tr.crown * (.85 + r() * .3);
+  const g = new THREE.Group(); g.userData.tree = t;
+  const trunkH = { round: .45, conifer: .9, pine: .78, columnar: .25, slender: .6, weeping: .5, shrub: .2 }[tr.shape] * h;
+  const tr0 = .1 + h * .012;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(tr0 * .6, tr0, trunkH, 7).translate(0, trunkH / 2, 0), tr.shape === 'slender' ? trunkMats.birch : trunkMats.bark);
+  trunk.castShadow = true; g.add(trunk);
+  const mat = crownMat(tr.color, r);
+  const add = geo => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; g.add(m); };
+  if (tr.shape === 'conifer') {
+    const tiers = 5, base = h * .12, span = h - base;
+    for (let k = 0; k < tiers; k++) { const f = k / tiers, rr = c * (1 - f * .8), hh = span * .38; add(new THREE.ConeGeometry(rr, hh, 9, 1).translate(0, base + f * span * .82 + hh / 2, 0)); }
+  } else {
+    const dims = { round: [c, h * .32, c, h * .66], pine: [c, h * .16, c, h * .84], columnar: [c, h * .46, c, h * .54], slender: [c, h * .36, c * .9, h * .62], weeping: [c, h * .4, c, h * .5], shrub: [c, h * .5, c, h * .5] }[tr.shape] || [c, h * .32, c, h * .66];
+    const geo = blob(r); geo.scale(dims[0], dims[1], dims[2]); geo.translate(0, dims[3], 0); add(geo);
+  }
+  g.rotation.y = r() * Math.PI * 2;
+  const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .2, p.z);
+  scene.add(g); pickables.push(g);
+}
+trees.forEach(makeTree);
+
+// ---------- 6. Contrôles ----------
+const centerY = groundAt(0, 0);
+camera.position.set(-S * .55, centerY + S * .45, S * .75);
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.target.set(0, centerY, 0); orbit.enableDamping = true; orbit.maxPolarAngle = Math.PI * .47; orbit.minDistance = 8; orbit.maxDistance = S * 2.5; orbit.update();
+
+let mode = 'orbit', yaw = 0, pitch = 0; const keys = {}; const joy = { x: 0, y: 0 };
+const EYE = 1.7;
+function setMode(m, init = false) {
+  mode = m; $('#m-orbit').classList.toggle('on', m === 'orbit'); $('#m-walk').classList.toggle('on', m === 'walk');
+  orbit.enabled = m === 'orbit';
+  $('#cross').classList.toggle('hidden', m !== 'walk'); $('#joy').classList.toggle('hidden', !(m === 'walk' && isTouch));
+  if (m === 'walk') {
+    const t = orbit.target; camera.position.set(t.x, groundAt(t.x, t.z) + EYE, t.z);
+    const d = new THREE.Vector3(); camera.getWorldDirection(d); yaw = Math.atan2(-d.x, -d.z); pitch = 0;
+    $('#help').textContent = isTouch ? 'Joystick pour avancer, glisse ailleurs pour regarder. Vise un arbre et touche-le pour sa fiche.' : 'Clique pour prendre la souris. ZQSD ou flèches pour marcher, Maj pour courir, Échap pour libérer. Clic sur un arbre pour sa fiche.';
+  } else {
+    if (document.pointerLockElement) document.exitPointerLock();
+    if (!init) {
+      const d = new THREE.Vector3(); camera.getWorldDirection(d);
+      orbit.target.set(camera.position.x + d.x * 30, groundAt(camera.position.x + d.x * 30, camera.position.z + d.z * 30), camera.position.z + d.z * 30);
+      camera.position.y += 40; orbit.update();
+    }
+    $('#help').textContent = isTouch ? 'Un doigt pour tourner, deux pour zoomer et déplacer. Touche un arbre pour sa fiche.' : 'Glisser pour tourner, clic droit pour déplacer, molette pour zoomer. Clic sur un arbre pour sa fiche.';
+  }
+}
+$('#m-orbit').onclick = () => setMode('orbit'); $('#m-walk').onclick = () => setMode('walk');
+addEventListener('keydown', e => { keys[e.code] = true; }); addEventListener('keyup', e => { keys[e.code] = false; });
+document.addEventListener('mousemove', e => { if (mode === 'walk' && document.pointerLockElement) { yaw -= e.movementX * .0022; pitch = Math.max(-1.3, Math.min(1.3, pitch - e.movementY * .0022)); } });
+
+// Tactile : joystick + regard
+const joyEl = $('#joy'), knob = joyEl.firstElementChild; let joyId = null, lookId = null, lx = 0, ly = 0;
+renderer.domElement.addEventListener('touchstart', e => { if (mode !== 'walk') return; for (const t of e.changedTouches) if (lookId === null) { lookId = t.identifier; lx = t.clientX; ly = t.clientY; } }, { passive: true });
+renderer.domElement.addEventListener('touchmove', e => { if (mode !== 'walk') return; for (const t of e.changedTouches) if (t.identifier === lookId) { yaw -= (t.clientX - lx) * .005; pitch = Math.max(-1.3, Math.min(1.3, pitch - (t.clientY - ly) * .005)); lx = t.clientX; ly = t.clientY; } }, { passive: true });
+renderer.domElement.addEventListener('touchend', e => { for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null; });
+joyEl.addEventListener('touchstart', e => { e.preventDefault(); joyId = e.changedTouches[0].identifier; }, { passive: false });
+joyEl.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joyId) { const r = joyEl.getBoundingClientRect(); let dx = (t.clientX - r.left - r.width / 2) / (r.width / 2), dy = (t.clientY - r.top - r.height / 2) / (r.height / 2); const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } joy.x = dx; joy.y = dy; knob.style.transform = `translate(${dx * 34}px, ${dy * 34}px)`; } }, { passive: false });
+joyEl.addEventListener('touchend', () => { joyId = null; joy.x = joy.y = 0; knob.style.transform = ''; });
+
+// ---------- 7. Sélection d'arbre ----------
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pick(cx, cy) {
+  if (cx == null) ndc.set(0, 0); else ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects(pickables, true)[0]; if (!hit) return null;
+  let o = hit.object; while (o && !o.userData.tree) o = o.parent; return o ? { tree: o.userData.tree, dist: hit.distance } : null;
+}
+function showCard(t) {
+  const tr = D.traits(t);
+  $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
+  const rows = [['Hauteur type', `${Math.round(tr.height)} m`], ['Relevé', new Date(t.date).toLocaleDateString('fr-FR')]];
+  if (t.species.score != null) rows.push(['Confiance', `${Math.round(t.species.score * 100)} %`]); if (t.note) rows.push(['Note', t.note]);
+  $('#card-dl').innerHTML = rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
+  const ph = $('#card-ph'); ph.innerHTML = '';
+  for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (u) { const img = new Image(); img.src = u; ph.appendChild(img); } });
+  $('#card').classList.remove('hidden');
+}
+$('#card-close').onclick = () => $('#card').classList.add('hidden');
+let down = null;
+renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
+  if (mode === 'walk' && !isTouch && !document.pointerLockElement) { renderer.domElement.requestPointerLock(); return; }
+  const p = mode === 'walk' ? pick() : pick(e.clientX, e.clientY);
+  if (p && (mode === 'orbit' || p.dist < 40)) showCard(p.tree);
+});
+const tip = $('#tip');
+renderer.domElement.addEventListener('mousemove', e => {
+  if (mode !== 'orbit' || isTouch) return;
+  const p = pick(e.clientX, e.clientY);
+  if (p) { tip.textContent = D.name(p.tree); tip.style.left = e.clientX + 'px'; tip.style.top = e.clientY + 'px'; tip.classList.remove('hidden'); renderer.domElement.style.cursor = 'pointer'; }
+  else { tip.classList.add('hidden'); renderer.domElement.style.cursor = ''; }
+});
+
+// ---------- 8. Boucle ----------
+const clock = new THREE.Clock();
+let frame = 0;
+function loop() {
+  const dt = Math.min(.05, clock.getDelta());
+  if (mode === 'orbit') orbit.update();
+  else {
+    const run = keys.ShiftLeft || keys.ShiftRight ? 9 : 3.5;
+    let f = (keys.KeyW || keys.KeyZ || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y;
+    let s = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.KeyQ || keys.ArrowLeft ? 1 : 0) + joy.x;
+    const sp = run * dt * (isTouch ? 1.6 : 1);
+    camera.position.x += (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp;
+    camera.position.z += (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
+    camera.position.x = Math.max(-S, Math.min(S, camera.position.x)); camera.position.z = Math.max(-S, Math.min(S, camera.position.z));
+    const target = groundAt(camera.position.x, camera.position.z) + EYE; camera.position.y += (target - camera.position.y) * Math.min(1, dt * 10);
+    camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    if (++frame % 6 === 0) { const p = pick(); if (p && p.dist < 40) { tip.textContent = `${D.name(p.tree)} · ${Math.round(p.dist)} m`; tip.style.left = '50%'; tip.style.top = '50%'; tip.classList.remove('hidden'); } else tip.classList.add('hidden'); }
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+setMode('orbit', true);
+progress('Prêt', 1); $('#loading').classList.add('hidden');
+loop();
+</script>
+</body>
+</html>

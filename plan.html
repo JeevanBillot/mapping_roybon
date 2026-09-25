@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plan de Roybon</title>
+<meta name="theme-color" content="#2f5d3a">
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root { --bg:#f2f5f0; --fg:#18261b; --muted:#66756a; --card:#fff; --line:#dfe6df; --accent:#2f5d3a; --accent-soft:#dcefdc; --shadow:0 4px 18px rgba(20,40,25,.14); }
+@media (prefers-color-scheme: dark) { :root { --bg:#111a13; --fg:#e8efe8; --muted:#9aa89d; --card:#1b271d; --line:#2c3a2e; --accent:#5fa36f; --accent-soft:#233b28; --shadow:0 4px 18px rgba(0,0,0,.5); } }
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif; color:var(--fg); background:var(--bg); }
+#map { position:fixed; inset:0; }
+.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.panel { position:fixed; z-index:1000; top:12px; left:12px; width:320px; max-height:calc(100% - 24px); display:flex; flex-direction:column; background:var(--card); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; }
+.panel header { padding:14px 16px 10px; background:#2f5d3a; color:#fff; }
+.panel h1 { margin:0; font-size:1.05rem; display:flex; align-items:center; gap:8px; }
+.panel .sub { font-size:.8rem; opacity:.85; margin-top:4px; }
+.panel .tools { display:flex; gap:6px; padding:10px 12px; border-bottom:1px solid var(--line); }
+.panel .tools a, .panel .tools button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:9px 6px; border-radius:10px; border:0; background:var(--accent-soft); color:var(--accent); font:600 .8rem inherit; font-family:inherit; text-decoration:none; cursor:pointer; }
+.search { margin:10px 12px 4px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--fg); font-size:.9rem; width:calc(100% - 24px); }
+.species { overflow-y:auto; padding:4px 6px 10px; }
+.species label { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; cursor:pointer; font-size:.9rem; }
+.species label:hover { background:var(--accent-soft); }
+.species input { display:none; }
+.species .sw { width:14px; height:14px; border-radius:50%; flex:none; box-shadow:0 0 0 2px var(--card), 0 0 0 3px var(--line); }
+.species input:not(:checked) + .sw { background:transparent !important; }
+.species input:not(:checked) ~ span { color:var(--muted); text-decoration:line-through; }
+.species .n { margin-left:auto; color:var(--muted); font-size:.8rem; }
+.species .name { flex:1; min-width:0; } .species .name i { display:block; color:var(--muted); font-size:.75rem; }
+.toggle { display:none; }
+.card { position:fixed; z-index:1000; right:12px; top:12px; width:300px; background:var(--card); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; }
+.card .ph { display:grid; grid-template-columns:repeat(2,1fr); gap:2px; background:var(--line); }
+.card .ph img { width:100%; aspect-ratio:1; object-fit:cover; display:block; cursor:zoom-in; }
+.card .ph img:only-child { grid-column:span 2; aspect-ratio:4/3; }
+.card .body { padding:14px 16px; }
+.card h2 { margin:0; font-size:1.1rem; } .card .sci { color:var(--muted); font-style:italic; font-size:.9rem; }
+.card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:12px 0 0; font-size:.85rem; } .card dt { color:var(--muted); } .card dd { margin:0; }
+.card .close { position:absolute; top:8px; right:8px; width:32px; height:32px; border-radius:50%; border:0; background:rgba(0,0,0,.5); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.hidden { display:none !important; }
+.tree-label { background:none; border:0; box-shadow:none; color:#fff; font-weight:700; font-size:11px; text-shadow:0 0 3px #000, 0 0 2px #000; padding:0; }
+.tree-label::before { display:none; }
+#viewer { position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,.92); display:flex; align-items:center; justify-content:center; } #viewer img { max-width:100%; max-height:100%; }
+.status { padding:10px 16px; font-size:.8rem; color:var(--muted); }
+.scalebox { position:fixed; z-index:999; right:12px; bottom:24px; }
+@media (max-width: 700px) {
+  .panel { top:auto; bottom:0; left:0; right:0; width:auto; max-height:55%; border-radius:16px 16px 0 0; padding-bottom:env(safe-area-inset-bottom); }
+  .panel.collapsed .species, .panel.collapsed .search, .panel.collapsed .tools { display:none; }
+  .toggle { display:flex; position:absolute; right:10px; top:12px; width:34px; height:34px; border-radius:50%; border:0; background:rgba(255,255,255,.18); color:#fff; align-items:center; justify-content:center; }
+  .card { left:12px; right:12px; width:auto; top:12px; }
+  .card .ph img { aspect-ratio:16/10; }
+}
+@media print {
+  .panel, .card, .leaflet-control-zoom, .leaflet-control-layers { display:none !important; }
+  #print-legend { display:block !important; position:fixed; z-index:1000; left:10px; bottom:10px; background:#fff; padding:8px 10px; font-size:9px; columns:3; border:1px solid #999; max-width:70%; }
+  #print-title { display:block !important; position:fixed; z-index:1000; left:10px; top:10px; background:#fff; padding:6px 10px; font:700 14px sans-serif; border:1px solid #999; }
+}
+#print-legend, #print-title { display:none; } #print-legend div { break-inside:avoid; display:flex; align-items:center; gap:4px; } #print-legend i { width:8px; height:8px; border-radius:50%; display:inline-block; }
+</style>
+</head>
+<body>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-trees" viewBox="0 0 24 24"><path d="M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z"/><path d="M7 16v6"/><path d="M13 19v3"/><path d="M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+</svg>
+<div id="map"></div>
+<div id="print-title">Arbres de Roybon</div>
+<div id="print-legend"></div>
+
+<aside class="panel" id="panel">
+  <header>
+    <h1><svg class="i"><use href="#i-trees"/></svg>Plan de Roybon</h1>
+    <div class="sub" id="sub">Chargement…</div>
+    <button class="toggle" id="toggle" aria-label="Replier"><svg class="i"><use href="#i-chev"/></svg></button>
+  </header>
+  <div class="tools">
+    <a href="./"><svg class="i"><use href="#i-back"/></svg>Saisie</a>
+    <a href="3d.html"><svg class="i"><use href="#i-cube"/></svg>3D</a>
+    <button id="print"><svg class="i"><use href="#i-print"/></svg>Imprimer</button>
+  </div>
+  <input class="search" id="search" type="search" placeholder="Rechercher une espèce…">
+  <div class="species" id="species"></div>
+</aside>
+
+<div class="card hidden" id="card">
+  <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
+  <div class="ph" id="card-ph"></div>
+  <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl></div>
+</div>
+<div id="viewer" class="hidden"><img alt=""></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="data.js"></script>
+<script>
+'use strict';
+const D = RoybonData, $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const WMTS = (layer, fmt = 'image/jpeg', style = 'normal') => `https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layer}&STYLE=${style}&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=${fmt}`;
+
+const map = L.map('map', { zoomControl: false, maxZoom: 22 }).setView(D.DEFAULT_CENTER, 16);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
+const ortho = L.tileLayer(WMTS('ORTHOIMAGERY.ORTHOPHOTOS'), { maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN' }).addTo(map);
+const plan = L.tileLayer(WMTS('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png'), { maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN' });
+const cadastre = L.tileLayer(WMTS('CADASTRALPARCELS.PARCELLAIRE_EXPRESS', 'image/png', 'PCI vecteur'), { maxZoom: 22, maxNativeZoom: 19, opacity: .9, attribution: '© IGN / DGFiP' });
+const buildings = L.layerGroup();
+L.control.layers({ 'Photo aérienne': ortho, 'Plan IGN': plan }, { 'Cadastre': cadastre, 'Bâtiments': buildings }, { position: 'topright' }).addTo(map);
+
+let trees = [], layers = {}, hidden = new Set();
+const treeLayer = L.layerGroup().addTo(map);
+
+function showCard(t) {
+  const tr = D.traits(t);
+  $('#card-name').textContent = D.name(t);
+  $('#card-sci').textContent = t.species.sci || '';
+  const rows = [['Hauteur type', `${Math.round(tr.height)} m`], ['Houppier', `≈ ${Math.round(tr.crown * 2)} m de large`], ['Relevé', new Date(t.date).toLocaleDateString('fr-FR')], ['Précision', t.corrected ? 'corrigée sur photo' : `± ${Math.round(t.acc || 0)} m`]];
+  if (t.species.score != null) rows.push(['Confiance', `${Math.round(t.species.score * 100)} %`]);
+  if (t.note) rows.push(['Note', t.note]);
+  $('#card-dl').innerHTML = rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
+  const ph = $('#card-ph'); ph.innerHTML = '';
+  for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (!u) return; const img = new Image(); img.src = u; img.onclick = () => { $('#viewer img').src = u; $('#viewer').classList.remove('hidden'); }; ph.appendChild(img); });
+  $('#card').classList.remove('hidden');
+}
+$('#card-close').onclick = () => $('#card').classList.add('hidden');
+$('#viewer').onclick = () => $('#viewer').classList.add('hidden');
+$('#toggle').onclick = () => $('#panel').classList.toggle('collapsed');
+$('#print').onclick = () => window.print();
+
+function draw() {
+  treeLayer.clearLayers(); layers = {};
+  // Les grands arbres d'abord pour que les petits restent cliquables par-dessus
+  const sorted = [...trees].sort((a, b) => D.traits(b).crown - D.traits(a).crown);
+  for (const t of sorted) {
+    const n = D.name(t); if (hidden.has(n)) continue;
+    const tr = D.traits(t), col = D.colorFor(t.species.sci || n);
+    const crown = L.circle([t.lat, t.lon], { radius: tr.crown, color: '#fff', weight: 1.5, fillColor: col, fillOpacity: .55 }).addTo(treeLayer);
+    const dot = L.circleMarker([t.lat, t.lon], { radius: 3, color: '#fff', weight: 1, fillColor: col, fillOpacity: 1 }).addTo(treeLayer);
+    crown.bindTooltip(esc(n), { permanent: true, direction: 'center', className: 'tree-label' });
+    for (const l of [crown, dot]) l.on('click', () => showCard(t));
+    layers[t.id] = crown;
+  }
+  updateLabels();
+}
+function updateLabels() { const show = map.getZoom() >= 20; treeLayer.eachLayer(l => { const tt = l.getTooltip && l.getTooltip(); if (tt) show ? l.openTooltip() : l.closeTooltip(); }); }
+map.on('zoomend', updateLabels);
+
+function renderSpecies() {
+  const q = $('#search').value.trim().toLowerCase();
+  const groups = {};
+  for (const t of trees) { const n = D.name(t); (groups[n] = groups[n] || { n, sci: t.species.sci, items: [] }).items.push(t); }
+  const list = Object.values(groups).sort((a, b) => b.items.length - a.items.length || a.n.localeCompare(b.n));
+  $('#species').innerHTML = list.filter(g => !q || (g.n + ' ' + (g.sci || '')).toLowerCase().includes(q)).map(g =>
+    `<label data-n="${esc(g.n)}"><input type="checkbox" ${hidden.has(g.n) ? '' : 'checked'}><i class="sw" style="background:${D.colorFor(g.sci || g.n)}"></i><span class="name">${esc(g.n)}<i>${esc(g.sci || '')}</i></span><span class="n">${g.items.length}</span></label>`).join('') || '<div class="status">Aucun arbre.</div>';
+  $('#species').querySelectorAll('label').forEach(l => {
+    l.querySelector('input').onchange = e => { const n = l.dataset.n; e.target.checked ? hidden.delete(n) : hidden.add(n); draw(); };
+    l.ondblclick = () => { const g = groups[l.dataset.n]; map.fitBounds(g.items.map(t => [t.lat, t.lon]), { maxZoom: 20, padding: [60, 60] }); };
+  });
+  $('#print-legend').innerHTML = list.map(g => `<div><i style="background:${D.colorFor(g.sci || g.n)}"></i>${esc(g.n)} (${g.items.length})</div>`).join('');
+  $('#sub').textContent = `${trees.length} arbres · ${list.length} espèces`;
+}
+$('#search').oninput = renderSpecies;
+
+async function loadBuildings() {
+  const b = map.getBounds().pad(.3);
+  const url = `https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:batiment&OUTPUTFORMAT=application/json&SRSNAME=EPSG:4326&COUNT=500&BBOX=${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()},urn:ogc:def:crs:EPSG::4326`;
+  try {
+    const gj = await (await fetch(url)).json();
+    buildings.clearLayers();
+    L.geoJSON(gj, {
+      coordsToLatLng: c => Math.abs(c[0] - b.getCenter().lat) < Math.abs(c[1] - b.getCenter().lat) ? L.latLng(c[0], c[1]) : L.latLng(c[1], c[0]),
+      style: { color: '#c0392b', weight: 1.5, fillColor: '#e8d5b0', fillOpacity: .6 },
+      onEachFeature: (f, l) => { const h = f.properties && f.properties.hauteur; l.bindTooltip(`Bâtiment${h ? ` · ${Math.round(h)} m` : ''}`); }
+    }).addTo(buildings);
+  } catch (e) { console.warn('Bâtiments indisponibles', e); }
+}
+map.on('overlayadd', e => { if (e.layer === buildings) loadBuildings(); });
+
+(async () => {
+  const r = await D.loadTrees(); trees = r.trees;
+  renderSpecies(); draw();
+  if (trees.length) map.fitBounds(trees.map(t => [t.lat, t.lon]), { padding: [60, 60], maxZoom: 19 });
+  else $('#sub').textContent = D.cfg.proxyUrl ? 'Aucun arbre enregistré pour l\'instant' : 'Ouvre d\'abord l\'app de saisie et configure le relais';
+})();
+</script>
+</body>
+</html>

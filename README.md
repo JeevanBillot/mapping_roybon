@@ -25,6 +25,12 @@ PWA à installer sur le téléphone. GPS moyenné + photos + identification Pl@n
 
 **Export** : onglet Liste → Exporter. Envoyer le ZIP pour l'étape 2.
 
-## 2. Plan 2D et 3D (à venir)
+## 2. Plan 2D et balade 3D
 
-Sources : orthophoto + cadastre IGN, LiDAR HD IGN (hauteurs d'arbres, relief), export de l'app.
+Deux pages qui lisent les arbres depuis le cloud (même relais que l'app) ou, à défaut, depuis le téléphone. Accès depuis l'onglet Carte de l'app.
+
+**Plan 2D** (`plan.html`) : photo aérienne ou plan IGN, cadastre et bâtiments en option. Chaque arbre est dessiné à l'échelle de son houppier, coloré par espèce. Liste des espèces avec filtre (clic) et zoom (double-clic), fiche avec photos, impression avec légende.
+
+**Balade 3D** (`3d.html`) : relief IGN RGE ALTI au mètre, photo aérienne plaquée au sol, bâtiments BD TOPO extrudés à leur hauteur réelle, arbres modélisés selon l'espèce (silhouette, hauteur, largeur, teinte). Deux modes : survol, et balade à hauteur d'homme (clavier et souris, joystick sur téléphone). Clic sur un arbre pour sa fiche.
+
+Les hauteurs d'arbres sont des valeurs typiques par espèce. Un champ `height` (en mètres) sur un arbre remplace la valeur typique.
