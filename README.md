@@ -2,11 +2,11 @@
 
 Recensement des arbres du parc (4 ha), puis plan 2D et balade 3D.
 
-## 1. App de collecte (`app/`)
+## 1. App de collecte (racine du dépôt)
 
 PWA à installer sur le téléphone. GPS moyenné + photos + identification Pl@ntNet, stockage local, export ZIP (GeoJSON + CSV + photos).
 
-**Mise en ligne** : GitHub Pages sur ce dépôt, dossier `app/` (Settings → Pages → branche `main`, dossier `/app`). HTTPS obligatoire pour le GPS.
+**Mise en ligne** : GitHub Pages, branche `main`, dossier racine. HTTPS obligatoire pour le GPS.
 
 **Sur le téléphone** : ouvrir l'URL Pages → « Ajouter à l'écran d'accueil » → ⚙ → coller la clé API Pl@ntNet (gratuite sur https://my.plantnet.org, 500 identifications/jour).
 
