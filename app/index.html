@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arbres du Pré Reynaud</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f5d3a">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Arbres du Pré Reynaud</h1>
+  <nav>
+    <button data-view="capture" class="active">Saisie</button>
+    <button data-view="list">Liste <span id="count">0</span></button>
+    <button data-view="map">Carte</button>
+    <button data-view="settings">⚙</button>
+  </nav>
+</header>
+
+<main>
+<!-- ===== SAISIE ===== -->
+<section id="view-capture" class="view active">
+  <div id="step-gps" class="step">
+    <p class="hint">Colle le téléphone au tronc, puis appuie. Reste immobile 15 s.</p>
+    <button id="btn-gps" class="big">📍 Je suis à l'arbre</button>
+    <div id="gps-status" class="status hidden">
+      <div class="bar"><div id="gps-bar"></div></div>
+      <p id="gps-text"></p>
+    </div>
+  </div>
+
+  <div id="step-photos" class="step hidden">
+    <p class="pos" id="pos-text"></p>
+    <div class="photo-grid">
+      <label class="photo-slot" data-organ="leaf">
+        <input type="file" accept="image/*" capture="environment">
+        <img alt=""><span>🍃 Feuille</span>
+      </label>
+      <label class="photo-slot" data-organ="bark">
+        <input type="file" accept="image/*" capture="environment">
+        <img alt=""><span>🪵 Écorce</span>
+      </label>
+      <label class="photo-slot" data-organ="habit">
+        <input type="file" accept="image/*" capture="environment">
+        <img alt=""><span>🌳 Silhouette</span>
+      </label>
+      <label class="photo-slot" data-organ="fruit">
+        <input type="file" accept="image/*" capture="environment">
+        <img alt=""><span>🌰 Fruit / fleur</span>
+      </label>
+    </div>
+    <button id="btn-identify" class="big" disabled>🔍 Identifier</button>
+    <button id="btn-manual" class="secondary">Saisir l'espèce à la main</button>
+    <div id="id-status" class="status hidden"></div>
+    <ul id="results" class="results"></ul>
+    <div id="manual" class="hidden">
+      <input id="manual-species" type="text" placeholder="Nom (ex : Chêne pédonculé)">
+      <button id="btn-manual-ok">Valider</button>
+    </div>
+  </div>
+
+  <div id="step-save" class="step hidden">
+    <p class="chosen" id="chosen-text"></p>
+    <input id="note" type="text" placeholder="Note (facultatif : diamètre, état, remarque)">
+    <button id="btn-save" class="big">💾 Enregistrer l'arbre</button>
+    <button id="btn-back" class="secondary">← Changer l'espèce</button>
+  </div>
+  <button id="btn-cancel" class="link hidden">Annuler cet arbre</button>
+</section>
+
+<!-- ===== LISTE ===== -->
+<section id="view-list" class="view">
+  <div class="toolbar">
+    <button id="btn-export">⬇ Exporter (GeoJSON + photos)</button>
+  </div>
+  <ul id="tree-list"></ul>
+</section>
+
+<!-- ===== CARTE ===== -->
+<section id="view-map" class="view">
+  <div id="map"></div>
+  <p class="hint small">Glisse un point pour corriger sa position sur l'orthophoto.</p>
+</section>
+
+<!-- ===== RÉGLAGES ===== -->
+<section id="view-settings" class="view">
+  <label>Clé API Pl@ntNet
+    <input id="api-key" type="password" placeholder="Clé de my.plantnet.org">
+  </label>
+  <label>Durée de moyenne GPS (s)
+    <input id="gps-seconds" type="number" min="5" max="60" value="15">
+  </label>
+  <button id="btn-save-settings">Enregistrer</button>
+  <hr>
+  <p class="small">Les données restent dans ce téléphone jusqu'à l'export. Pense à exporter régulièrement.</p>
+  <button id="btn-wipe" class="danger">Tout effacer</button>
+</section>
+</main>
+
+<div id="toast" class="hidden"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
