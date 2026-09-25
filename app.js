@@ -141,7 +141,11 @@ async function identify() {
     const url = `https://my-api.plantnet.org/v2/identify/all?api-key=${encodeURIComponent(settings.apiKey)}&lang=fr&nb-results=5&include-related-images=true`;
     const r = await fetch(url, { method: 'POST', body: fd });
     if (r.status === 404) { st.textContent = 'Aucune espèce reconnue. Ajoute une autre photo (feuille de préférence) ou saisis à la main.'; return; }
-    if (!r.ok) { st.textContent = `Erreur API ${r.status}. Réessaie.`; return; }
+    if (!r.ok) {
+      let msg = ''; try { const j = await r.json(); msg = j.message || j.error || JSON.stringify(j); } catch (e) { msg = await r.text().catch(() => ''); }
+      st.textContent = `Erreur API ${r.status}${msg ? ' : ' + msg : ''}` + (r.status === 401 || r.status === 403 ? ' — vérifie la clé dans ⚙ (my.plantnet.org, onglet Settings, "API key")' : r.status === 429 ? ' — quota du jour dépassé' : '');
+      return;
+    }
     const data = await r.json();
     current.apiRaw = data.results.slice(0, 5).map(x => ({ sci: x.species.scientificNameWithoutAuthor, score: x.score, common: x.species.commonNames }));
     show(st, false);
