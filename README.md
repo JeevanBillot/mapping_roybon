@@ -1,4 +1,4 @@
-# Mapping Roybon — Pré Reynaud
+# Mapping Roybon
 
 Recensement des arbres du parc (4 ha), puis plan 2D et balade 3D.
 

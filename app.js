@@ -1,4 +1,4 @@
-/* Arbres du Pré Reynaud — collecte terrain (PWA) */
+/* Arbres de Roybon — collecte terrain (PWA) */
 'use strict';
 
 // ---------- IndexedDB ----------
@@ -296,7 +296,7 @@ $('#btn-export').addEventListener('click', async () => {
   zip.file('arbres.csv', 'id;date;nom;nom_scientifique;score;lat;lon;precision_m;corrige;note\n' + trees.map(t => [t.id, t.date, speciesName(t), t.species.sci, t.species.score, t.lat, t.lon, (t.acc || 0).toFixed(1), t.corrected ? 1 : 0, (t.note || '').replace(/;/g, ',')].join(';')).join('\n'));
   for (const t of trees) for (const o of t.organs || []) { const id = `${t.id}_${o}`; await photoSrc(id); const p = await getOne('photos', id); if (p) zip.file(`photos/${id}.jpg`, p.blob); }
   const blob = await zip.generateAsync({ type: 'blob' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `arbres-pre-reynaud-${new Date().toISOString().slice(0, 10)}.zip`; a.click();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `arbres-roybon-${new Date().toISOString().slice(0, 10)}.zip`; a.click();
   toast(`${trees.length} arbres exportés`);
 });
 
