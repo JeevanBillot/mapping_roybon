@@ -12,13 +12,16 @@ PWA à installer sur le téléphone. GPS moyenné + photos + identification Pl@n
 1. Compte sur https://dash.cloudflare.com → Workers & Pages → Create → Start with Hello World → Deploy.
 2. Edit code → remplacer tout par `proxy/worker.js` → Deploy.
 3. Settings du Worker → Variables and Secrets → ajouter le secret `PLANTNET_KEY` (clé de https://my.plantnet.org, 500 identifications/jour) et, conseillé, `APP_TOKEN` (mot de passe de ton choix).
-4. Copier l'URL du Worker (`https://….workers.dev`).
+4. **Stockage cloud** : menu Storage & Databases → KV → Create namespace (nom libre, ex. `arbres`). Puis Settings du Worker → Bindings → Add → KV namespace → Variable name `TREES` → choisir le namespace → Deploy.
+5. Copier l'URL du Worker (`https://….workers.dev`).
+
+**Synchronisation** : chaque arbre et ses photos partent vers le KV dès qu'il y a du réseau. Tout appareil configuré avec la même URL et le même mot de passe voit les mêmes arbres. Le ZIP d'export reste la sauvegarde de référence.
 
 **Sur le téléphone** : ouvrir l'URL Pages → « Ajouter à l'écran d'accueil » → ⚙ → coller l'URL du Worker et le mot de passe.
 
-**Par arbre** : coller le téléphone au tronc → « Je suis à l'arbre » (15 s immobile) → photos feuille / écorce / silhouette → Identifier → choisir → Enregistrer.
+**Par arbre** : téléphone à bout de bras à côté du tronc, écran vers le ciel → « Je suis à l'arbre » (20 s) → glisser le point sur le houppier dans la photo aérienne → photos feuille / écorce / silhouette (identification automatique) → choisir → Enregistrer.
 
-**Onglet Carte** : orthophoto IGN, points déplaçables pour corriger une position GPS imprécise.
+**Précision** : le GPS seul donne 3 à 10 m. La correction sur orthophoto IGN (20 cm/pixel) ramène à moins d'1 m. Les points restent déplaçables dans l'onglet Carte.
 
 **Export** : onglet Liste → Exporter. Envoyer le ZIP pour l'étape 2.
 

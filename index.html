@@ -2,10 +2,12 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Arbres du Pré Reynaud</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#2f5d3a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -13,99 +15,112 @@
 </head>
 <body>
 <header>
-  <h1>Arbres du Pré Reynaud</h1>
-  <nav>
-    <button data-view="capture" class="active">Saisie</button>
-    <button data-view="list">Liste <span id="count">0</span></button>
-    <button data-view="map">Carte</button>
-    <button data-view="settings">⚙</button>
-  </nav>
+  <div class="bar">
+    <h1>🌳 Pré Reynaud</h1>
+    <button id="sync-btn" class="chip" title="Synchroniser"><span id="sync-icon">☁️</span><span id="sync-text">—</span></button>
+  </div>
 </header>
 
 <main>
 <!-- ===== SAISIE ===== -->
 <section id="view-capture" class="view active">
+  <ol class="stepper">
+    <li data-step="1" class="on">Position</li><li data-step="2">Photos</li><li data-step="3">Espèce</li>
+  </ol>
+
+  <!-- Étape 1 : position -->
   <div id="step-gps" class="step">
-    <p class="hint">Colle le téléphone au tronc, puis appuie. Reste immobile 15 s.</p>
-    <button id="btn-gps" class="big">📍 Je suis à l'arbre</button>
-    <div id="gps-status" class="status hidden">
-      <div class="bar"><div id="gps-bar"></div></div>
-      <p id="gps-text"></p>
+    <div class="card">
+      <p class="hint">Tiens le téléphone <b>à bout de bras, à côté du tronc</b>, écran vers le ciel. Le tronc bloque les satellites.</p>
+      <button id="btn-gps" class="big primary">📍 Je suis à l'arbre</button>
+      <div id="gps-status" class="hidden">
+        <div class="ring"><svg viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="16"/><circle id="gps-ring" class="fg" cx="18" cy="18" r="16"/></svg><div id="gps-acc">—</div></div>
+        <p id="gps-text" class="center">Acquisition…</p>
+        <button id="btn-gps-stop" class="secondary">Valider maintenant</button>
+      </div>
+    </div>
+    <div id="pos-card" class="card hidden">
+      <p class="hint small">GPS : <span id="pos-text"></span></p>
+      <div id="mini-map"></div>
+      <p class="hint small">Glisse le point sur le houppier de l'arbre dans la photo aérienne.</p>
+      <button id="btn-pos-ok" class="big primary">Position OK →</button>
+      <button id="btn-pos-redo" class="link">Refaire le GPS</button>
     </div>
   </div>
 
+  <!-- Étape 2 : photos -->
   <div id="step-photos" class="step hidden">
-    <p class="pos" id="pos-text"></p>
     <div class="photo-grid">
-      <label class="photo-slot" data-organ="leaf">
-        <input type="file" accept="image/*" capture="environment">
-        <img alt=""><span>🍃 Feuille</span>
-      </label>
-      <label class="photo-slot" data-organ="bark">
-        <input type="file" accept="image/*" capture="environment">
-        <img alt=""><span>🪵 Écorce</span>
-      </label>
-      <label class="photo-slot" data-organ="habit">
-        <input type="file" accept="image/*" capture="environment">
-        <img alt=""><span>🌳 Silhouette</span>
-      </label>
-      <label class="photo-slot" data-organ="fruit">
-        <input type="file" accept="image/*" capture="environment">
-        <img alt=""><span>🌰 Fruit / fleur</span>
-      </label>
+      <label class="photo-slot" data-organ="leaf"><input type="file" accept="image/*" capture="environment"><img alt=""><span>🍃 Feuille</span><i class="x">✕</i></label>
+      <label class="photo-slot" data-organ="bark"><input type="file" accept="image/*" capture="environment"><img alt=""><span>🪵 Écorce</span><i class="x">✕</i></label>
+      <label class="photo-slot" data-organ="habit"><input type="file" accept="image/*" capture="environment"><img alt=""><span>🌳 Silhouette</span><i class="x">✕</i></label>
+      <label class="photo-slot" data-organ="fruit"><input type="file" accept="image/*" capture="environment"><img alt=""><span>🌰 Fruit / fleur</span><i class="x">✕</i></label>
     </div>
-    <button id="btn-identify" class="big" disabled>🔍 Identifier</button>
-    <button id="btn-manual" class="secondary">Saisir l'espèce à la main</button>
-    <div id="id-status" class="status hidden"></div>
+    <p class="hint small center">La feuille sur fond uni identifie le mieux. L'identification se lance automatiquement.</p>
+    <div id="id-status" class="card status hidden"></div>
     <ul id="results" class="results"></ul>
-    <div id="manual" class="hidden">
-      <input id="manual-species" type="text" placeholder="Nom (ex : Chêne pédonculé)">
-      <button id="btn-manual-ok">Valider</button>
+    <button id="btn-manual" class="secondary">✏️ Saisir l'espèce à la main</button>
+    <div id="manual" class="card hidden">
+      <input id="manual-species" type="text" placeholder="Nom (ex : Chêne pédonculé)" list="species-list">
+      <datalist id="species-list"></datalist>
+      <button id="btn-manual-ok" class="primary">Valider</button>
     </div>
   </div>
 
+  <!-- Étape 3 : confirmation -->
   <div id="step-save" class="step hidden">
-    <p class="chosen" id="chosen-text"></p>
+    <div class="card chosen">
+      <div id="chosen-img" class="thumb"></div>
+      <div><b id="chosen-common"></b><i id="chosen-sci"></i><span id="chosen-score" class="pill"></span></div>
+    </div>
     <input id="note" type="text" placeholder="Note (facultatif : diamètre, état, remarque)">
-    <button id="btn-save" class="big">💾 Enregistrer l'arbre</button>
-    <button id="btn-back" class="secondary">← Changer l'espèce</button>
+    <button id="btn-save" class="big primary">💾 Enregistrer l'arbre</button>
+    <button id="btn-back" class="link">← Changer l'espèce</button>
   </div>
   <button id="btn-cancel" class="link hidden">Annuler cet arbre</button>
 </section>
 
 <!-- ===== LISTE ===== -->
 <section id="view-list" class="view">
-  <div class="toolbar">
-    <button id="btn-export">⬇ Exporter (GeoJSON + photos)</button>
-  </div>
+  <input id="search" type="search" placeholder="Rechercher une espèce…">
+  <div id="stats" class="stats"></div>
   <ul id="tree-list"></ul>
+  <div class="toolbar">
+    <button id="btn-export" class="secondary">⬇ Exporter ZIP (GeoJSON + photos)</button>
+  </div>
 </section>
 
 <!-- ===== CARTE ===== -->
 <section id="view-map" class="view">
   <div id="map"></div>
-  <p class="hint small">Glisse un point pour corriger sa position sur l'orthophoto.</p>
+  <div id="legend" class="legend"></div>
 </section>
 
 <!-- ===== RÉGLAGES ===== -->
 <section id="view-settings" class="view">
-  <label>URL du relais Pl@ntNet (Cloudflare Worker)
-    <input id="proxy-url" type="text" placeholder="https://xxx.workers.dev">
-  </label>
-  <label>Mot de passe du relais (si défini)
-    <input id="app-token" type="password" placeholder="facultatif">
-  </label>
-  <label>Durée de moyenne GPS (s)
-    <input id="gps-seconds" type="number" min="5" max="60" value="15">
-  </label>
-  <button id="btn-save-settings">Enregistrer</button>
-  <hr>
-  <p class="small">Les données restent dans ce téléphone jusqu'à l'export. Pense à exporter régulièrement.</p>
-  <button id="btn-wipe" class="danger">Tout effacer</button>
+  <div class="card">
+    <label>URL du relais (Cloudflare Worker)<input id="proxy-url" type="url" placeholder="https://xxx.workers.dev"></label>
+    <label>Mot de passe du relais<input id="app-token" type="password" placeholder="APP_TOKEN"></label>
+    <label>Durée de moyenne GPS (s)<input id="gps-seconds" type="number" min="5" max="60" value="20"></label>
+    <button id="btn-save-settings" class="primary">Enregistrer</button>
+  </div>
+  <div class="card">
+    <p class="hint small">Les arbres sont stockés sur ce téléphone et envoyés au cloud (Worker) dès qu'il y a du réseau. Un autre appareil avec la même URL et le même mot de passe voit les mêmes arbres.</p>
+    <button id="btn-sync-full" class="secondary">🔄 Synchroniser maintenant</button>
+    <button id="btn-wipe" class="danger">Effacer les données locales</button>
+  </div>
 </section>
 </main>
 
+<nav>
+  <button data-view="capture" class="active"><span>➕</span>Saisie</button>
+  <button data-view="list"><span>📋</span>Liste <em id="count">0</em></button>
+  <button data-view="map"><span>🗺️</span>Carte</button>
+  <button data-view="settings"><span>⚙️</span>Réglages</button>
+</nav>
+
 <div id="toast" class="hidden"></div>
+<div id="viewer" class="hidden"><img alt=""><button>✕</button></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
