@@ -8,56 +8,78 @@
 <link rel="icon" href="icon.svg">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
-:root { --bg:#f2f5f0; --fg:#18261b; --muted:#66756a; --card:#fff; --line:#dfe6df; --accent:#2f5d3a; --accent-soft:#dcefdc; --shadow:0 4px 18px rgba(20,40,25,.14); }
-@media (prefers-color-scheme: dark) { :root { --bg:#111a13; --fg:#e8efe8; --muted:#9aa89d; --card:#1b271d; --line:#2c3a2e; --accent:#5fa36f; --accent-soft:#233b28; --shadow:0 4px 18px rgba(0,0,0,.5); } }
+:root { --bg:#f2f5f0; --fg:#18261b; --muted:#66756a; --card:rgba(255,255,255,.96); --line:#dfe6df; --accent:#2f5d3a; --accent-soft:#e3efe0; --shadow:0 6px 24px rgba(20,40,25,.16); --paper:#f5f2ea; }
+@media (prefers-color-scheme: dark) { :root { --bg:#111a13; --fg:#e8efe8; --muted:#9aa89d; --card:rgba(27,39,29,.96); --line:#2c3a2e; --accent:#6db07c; --accent-soft:#243a29; --shadow:0 6px 24px rgba(0,0,0,.5); } }
 * { box-sizing:border-box; }
 html, body { margin:0; height:100%; font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif; color:var(--fg); background:var(--bg); }
-#map { position:fixed; inset:0; }
-.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
-.panel { position:fixed; z-index:1000; top:12px; left:12px; width:320px; max-height:calc(100% - 24px); display:flex; flex-direction:column; background:var(--card); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; }
-.panel header { padding:14px 16px 10px; background:#2f5d3a; color:#fff; }
-.panel h1 { margin:0; font-size:1.05rem; display:flex; align-items:center; gap:8px; }
-.panel .sub { font-size:.8rem; opacity:.85; margin-top:4px; }
-.panel .tools { display:flex; gap:6px; padding:10px 12px; border-bottom:1px solid var(--line); }
-.panel .tools a, .panel .tools button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:9px 6px; border-radius:10px; border:0; background:var(--accent-soft); color:var(--accent); font:600 .8rem inherit; font-family:inherit; text-decoration:none; cursor:pointer; }
-.search { margin:10px 12px 4px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--fg); font-size:.9rem; width:calc(100% - 24px); }
-.species { overflow-y:auto; padding:4px 6px 10px; }
-.species label { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; cursor:pointer; font-size:.9rem; }
+#map { position:fixed; inset:0; background:var(--paper); }
+#map.paper { background:var(--paper); }
+.i { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.panel { position:fixed; z-index:1000; top:12px; left:12px; width:330px; max-height:calc(100% - 24px); display:flex; flex-direction:column; background:var(--card); backdrop-filter:blur(10px); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; }
+.panel header { padding:14px 16px 12px; background:#2f5d3a; color:#fff; position:relative; }
+.panel h1 { margin:0; font-size:1.05rem; display:flex; align-items:center; gap:8px; letter-spacing:-.01em; }
+.panel .sub { font-size:.78rem; opacity:.85; margin-top:4px; line-height:1.4; }
+.tools { display:flex; gap:6px; padding:10px 12px 4px; }
+.tools a, .tools button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:9px 6px; border-radius:10px; border:0; background:var(--accent-soft); color:var(--accent); font:600 .8rem system-ui; font-family:inherit; text-decoration:none; cursor:pointer; }
+.section { padding:8px 12px 2px; font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.chips { display:flex; flex-wrap:wrap; gap:6px; padding:4px 12px 6px; }
+.chips button { border:1px solid var(--line); background:none; color:var(--muted); border-radius:20px; padding:6px 11px; font:600 .75rem system-ui; font-family:inherit; cursor:pointer; }
+.chips button.on { border-color:var(--accent); color:#fff; background:var(--accent); }
+.chips button:disabled { opacity:.4; cursor:default; }
+.search { margin:6px 12px 4px; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--fg); font-size:.88rem; width:calc(100% - 24px); }
+.species { overflow-y:auto; padding:2px 6px 10px; min-height:60px; }
+.species label { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:10px; cursor:pointer; font-size:.88rem; }
 .species label:hover { background:var(--accent-soft); }
 .species input { display:none; }
-.species .sw { width:14px; height:14px; border-radius:50%; flex:none; box-shadow:0 0 0 2px var(--card), 0 0 0 3px var(--line); }
+.species .sw { width:14px; height:14px; border-radius:50%; flex:none; border:2px solid rgba(0,0,0,.15); }
 .species input:not(:checked) + .sw { background:transparent !important; }
-.species input:not(:checked) ~ span { color:var(--muted); text-decoration:line-through; }
-.species .n { margin-left:auto; color:var(--muted); font-size:.8rem; }
-.species .name { flex:1; min-width:0; } .species .name i { display:block; color:var(--muted); font-size:.75rem; }
+.species input:not(:checked) ~ .name { color:var(--muted); text-decoration:line-through; }
+.species .n { margin-left:auto; color:var(--muted); font-size:.78rem; text-align:right; white-space:nowrap; }
+.species .name { flex:1; min-width:0; } .species .name i { display:block; color:var(--muted); font-size:.74rem; }
 .toggle { display:none; }
-.card { position:fixed; z-index:1000; right:12px; top:12px; width:300px; background:var(--card); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; }
-.card .ph { display:grid; grid-template-columns:repeat(2,1fr); gap:2px; background:var(--line); }
+.card { position:fixed; z-index:1000; right:12px; top:12px; width:310px; background:var(--card); backdrop-filter:blur(10px); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; }
+.card .ph { display:grid; grid-template-columns:repeat(2,1fr); gap:2px; }
 .card .ph img { width:100%; aspect-ratio:1; object-fit:cover; display:block; cursor:zoom-in; }
 .card .ph img:only-child { grid-column:span 2; aspect-ratio:4/3; }
-.card .body { padding:14px 16px; }
-.card h2 { margin:0; font-size:1.1rem; } .card .sci { color:var(--muted); font-style:italic; font-size:.9rem; }
-.card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:12px 0 0; font-size:.85rem; } .card dt { color:var(--muted); } .card dd { margin:0; }
-.card .close { position:absolute; top:8px; right:8px; width:32px; height:32px; border-radius:50%; border:0; background:rgba(0,0,0,.5); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.card .body { padding:14px 16px 16px; }
+.card h2 { margin:0; font-size:1.12rem; display:flex; align-items:center; gap:8px; } .card .num { font-size:.75rem; background:var(--accent); color:#fff; border-radius:8px; padding:2px 7px; }
+.card .sci { color:var(--muted); font-style:italic; font-size:.9rem; }
+.card dl { display:grid; grid-template-columns:auto 1fr; gap:5px 14px; margin:12px 0 0; font-size:.85rem; } .card dt { color:var(--muted); } .card dd { margin:0; font-weight:500; }
+.card .close { position:absolute; top:8px; right:8px; width:32px; height:32px; border-radius:50%; border:0; background:rgba(0,0,0,.5); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:1; }
+.badge { display:inline-block; font-size:.68rem; font-weight:700; padding:1px 6px; border-radius:6px; background:var(--accent-soft); color:var(--accent); margin-left:6px; }
 .hidden { display:none !important; }
-.tree-label { background:none; border:0; box-shadow:none; color:#fff; font-weight:700; font-size:11px; text-shadow:0 0 3px #000, 0 0 2px #000; padding:0; }
-.tree-label::before { display:none; }
+/* Carte */
+.crown { filter:drop-shadow(1.5px 2.5px 2px rgba(0,0,0,.35)); transition:fill-opacity .15s; }
+.crown:hover { fill-opacity:.85; }
+.other { filter:none; }
+.tnum { background:none; border:0; }
+.tnum div { transform:translate(5px,-120%); display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:#fff; color:#18261b; font:700 10px system-ui; box-shadow:0 1px 3px rgba(0,0,0,.4); white-space:nowrap; }
+.tnum div b { font-weight:600; margin-left:4px; }
+.north { width:44px; height:44px; background:var(--card); border-radius:50%; box-shadow:var(--shadow); display:flex; align-items:center; justify-content:center; }
+.leaflet-control-scale-line { border-color:#333; background:rgba(255,255,255,.85); font-weight:600; }
 #viewer { position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,.92); display:flex; align-items:center; justify-content:center; } #viewer img { max-width:100%; max-height:100%; }
 .status { padding:10px 16px; font-size:.8rem; color:var(--muted); }
-.scalebox { position:fixed; z-index:999; right:12px; bottom:24px; }
 @media (max-width: 700px) {
-  .panel { top:auto; bottom:0; left:0; right:0; width:auto; max-height:55%; border-radius:16px 16px 0 0; padding-bottom:env(safe-area-inset-bottom); }
-  .panel.collapsed .species, .panel.collapsed .search, .panel.collapsed .tools { display:none; }
+  .panel { top:auto; bottom:0; left:0; right:0; width:auto; max-height:58%; border-radius:18px 18px 0 0; padding-bottom:env(safe-area-inset-bottom); }
+  .panel.collapsed > :not(header) { display:none; }
   .toggle { display:flex; position:absolute; right:10px; top:12px; width:34px; height:34px; border-radius:50%; border:0; background:rgba(255,255,255,.18); color:#fff; align-items:center; justify-content:center; }
-  .card { left:12px; right:12px; width:auto; top:12px; }
-  .card .ph img { aspect-ratio:16/10; }
+  .card { left:12px; right:12px; width:auto; top:12px; } .card .ph img { aspect-ratio:16/10; }
 }
+/* Impression : A4 paysage, carte + cartouche, puis index des arbres */
+#print-sheet { display:none; }
 @media print {
-  .panel, .card, .leaflet-control-zoom, .leaflet-control-layers { display:none !important; }
-  #print-legend { display:block !important; position:fixed; z-index:1000; left:10px; bottom:10px; background:#fff; padding:8px 10px; font-size:9px; columns:3; border:1px solid #999; max-width:70%; }
-  #print-title { display:block !important; position:fixed; z-index:1000; left:10px; top:10px; background:#fff; padding:6px 10px; font:700 14px sans-serif; border:1px solid #999; }
+  .tnum { display:block !important; }
+  @page { size:A4 landscape; margin:8mm; }
+  body { background:#fff; }
+  .panel, .card, .leaflet-control-zoom, .leaflet-control-layers, .leaflet-control-attribution { display:none !important; }
+  #map { position:relative; width:281mm; height:194mm; page-break-after:always; }
+  #print-sheet { display:block; font:9pt system-ui; color:#000; }
+  .cartouche { position:absolute; z-index:1000; right:4mm; top:18mm; background:#fff; border:1px solid #333; padding:3mm 4mm; width:62mm; font:8pt system-ui; }
+  .cartouche h2 { margin:0 0 1mm; font-size:12pt; } .cartouche .leg div { display:flex; align-items:center; gap:2mm; margin:.6mm 0; } .cartouche .leg i { width:3mm; height:3mm; border-radius:50%; display:inline-block; border:1px solid rgba(0,0,0,.3); }
+  table { width:100%; border-collapse:collapse; } th, td { border-bottom:1px solid #ccc; padding:1.2mm 2mm; text-align:left; } th { background:#eee; }
 }
-#print-legend, #print-title { display:none; } #print-legend div { break-inside:avoid; display:flex; align-items:center; gap:4px; } #print-legend i { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.cartouche { display:none; }
+@media print { .cartouche { display:block; } }
 </style>
 </head>
 <body>
@@ -69,9 +91,7 @@ html, body { margin:0; height:100%; font-family:-apple-system,system-ui,"Segoe U
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
 </svg>
-<div id="map"></div>
-<div id="print-title">Arbres de Roybon</div>
-<div id="print-legend"></div>
+<div id="map"><div class="cartouche" id="cartouche"></div></div>
 
 <aside class="panel" id="panel">
   <header>
@@ -84,6 +104,15 @@ html, body { margin:0; height:100%; font-family:-apple-system,system-ui,"Segoe U
     <a href="3d.html"><svg class="i"><use href="#i-cube"/></svg>3D</a>
     <button id="print"><svg class="i"><use href="#i-print"/></svg>Imprimer</button>
   </div>
+  <div class="section">Fond</div>
+  <div class="chips" id="bases">
+    <button data-b="ortho" class="on">Photo aérienne</button><button data-b="paper">Plan clair</button><button data-b="ign">Plan IGN</button>
+  </div>
+  <div class="section">Calques</div>
+  <div class="chips" id="overlays">
+    <button data-o="relief" disabled>Relief</button><button data-o="chm" disabled>Hauteur végétation</button><button data-o="others" disabled>Autres arbres</button><button data-o="buildings" class="on">Bâtiments</button><button data-o="cadastre">Cadastre</button><button data-o="numbers" class="on">Numéros</button>
+  </div>
+  <div class="section">Espèces</div>
   <input class="search" id="search" type="search" placeholder="Rechercher une espèce…">
   <div class="species" id="species"></div>
 </aside>
@@ -91,38 +120,70 @@ html, body { margin:0; height:100%; font-family:-apple-system,system-ui,"Segoe U
 <div class="card hidden" id="card">
   <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
   <div class="ph" id="card-ph"></div>
-  <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl></div>
+  <div class="body"><h2><span class="num" id="card-num"></span><span id="card-name"></span></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl></div>
 </div>
 <div id="viewer" class="hidden"><img alt=""></div>
+<div id="print-sheet"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="data.js"></script>
 <script>
 'use strict';
-const D = RoybonData, $ = s => document.querySelector(s);
+const D = RoybonData, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const WMTS = (layer, fmt = 'image/jpeg', style = 'normal') => `https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layer}&STYLE=${style}&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=${fmt}`;
+// Palette distincte, lisible sur photo aérienne comme sur fond clair
+const PALETTE = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#a9a9a9'];
 
-const map = L.map('map', { zoomControl: false, maxZoom: 22 }).setView(D.DEFAULT_CENTER, 16);
+const map = L.map('map', { zoomControl: false, maxZoom: 22, zoomSnap: .25, preferCanvas: false }).setView(D.DEFAULT_CENTER, 16);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
-L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
-const ortho = L.tileLayer(WMTS('ORTHOIMAGERY.ORTHOPHOTOS'), { maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN' }).addTo(map);
-const plan = L.tileLayer(WMTS('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png'), { maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN' });
-const cadastre = L.tileLayer(WMTS('CADASTRALPARCELS.PARCELLAIRE_EXPRESS', 'image/png', 'PCI vecteur'), { maxZoom: 22, maxNativeZoom: 19, opacity: .9, attribution: '© IGN / DGFiP' });
-const buildings = L.layerGroup();
-L.control.layers({ 'Photo aérienne': ortho, 'Plan IGN': plan }, { 'Cadastre': cadastre, 'Bâtiments': buildings }, { position: 'topright' }).addTo(map);
+L.control.scale({ position: 'bottomleft', imperial: false, maxWidth: 160 }).addTo(map);
+const North = L.Control.extend({ onAdd() { const d = L.DomUtil.create('div', 'north'); d.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24"><path d="M12 2l5 16-5-3-5 3z" fill="#2f5d3a"/><text x="12" y="24" font-size="6" text-anchor="middle" font-weight="700" fill="#2f5d3a">N</text></svg>'; return d; } });
+new North({ position: 'topright' }).addTo(map);
 
-let trees = [], layers = {}, hidden = new Set();
-const treeLayer = L.layerGroup().addTo(map);
+map.createPane('relief').style.zIndex = 250; map.createPane('chm').style.zIndex = 260; map.createPane('cad').style.zIndex = 270;
+map.createPane('bld').style.zIndex = 380; map.createPane('others').style.zIndex = 390; map.createPane('crowns').style.zIndex = 420; map.createPane('nums').style.zIndex = 640;
+const bases = {
+  ortho: L.tileLayer(WMTS('ORTHOIMAGERY.ORTHOPHOTOS'), { maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN' }),
+  ign: L.tileLayer(WMTS('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png'), { maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN' }),
+  paper: L.layerGroup(),
+};
+let base = 'ortho'; bases.ortho.addTo(map);
+const ov = {
+  relief: L.layerGroup(), chm: L.layerGroup(), others: L.layerGroup(), numbers: L.layerGroup(),
+  buildings: L.layerGroup(), cadastre: L.tileLayer(WMTS('CADASTRALPARCELS.PARCELLAIRE_EXPRESS', 'image/png', 'PCI vecteur'), { pane: 'cad', maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN / DGFiP' }),
+};
+const crownLayer = L.layerGroup().addTo(map);
+ov.buildings.addTo(map); ov.numbers.addTo(map);
 
-function showCard(t) {
-  const tr = D.traits(t);
-  $('#card-name').textContent = D.name(t);
-  $('#card-sci').textContent = t.species.sci || '';
-  const rows = [['Hauteur type', `${Math.round(tr.height)} m`], ['Houppier', `≈ ${Math.round(tr.crown * 2)} m de large`], ['Relevé', new Date(t.date).toLocaleDateString('fr-FR')], ['Précision', t.corrected ? 'corrigée sur photo' : `± ${Math.round(t.acc || 0)} m`]];
-  if (t.species.score != null) rows.push(['Confiance', `${Math.round(t.species.score * 100)} %`]);
-  if (t.note) rows.push(['Note', t.note]);
-  $('#card-dl').innerHTML = rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
+let trees = [], rows = [], hidden = new Set(), lidar = null, buildings = [], colors = {};
+const crownStyle = r => base === 'ortho'
+  ? { pane: 'crowns', className: 'crown', color: '#fff', weight: 1.6, fillColor: r.color, fillOpacity: .6 }
+  : { pane: 'crowns', className: 'crown', color: shade(r.color, -.35), weight: 1.2, fillColor: r.color, fillOpacity: .78 };
+function shade(hex, k) { const n = parseInt(hex.slice(1), 16); const f = c => Math.max(0, Math.min(255, Math.round(c + (k < 0 ? c * k : (255 - c) * k)))); return '#' + [n >> 16, n >> 8 & 255, n & 255].map(f).map(v => v.toString(16).padStart(2, '0')).join(''); }
+
+function setBase(b) {
+  base = b; for (const k in bases) map.removeLayer(bases[k]); bases[b].addTo(map);
+  $('#map').classList.toggle('paper', b === 'paper');
+  $$('#bases button').forEach(x => x.classList.toggle('on', x.dataset.b === b));
+  if (b === 'paper' && lidar && lidar.ok && !map.hasLayer(ov.relief)) toggleOv('relief', true);
+  draw();
+}
+function toggleOv(k, on) {
+  const l = ov[k]; on = on ?? !map.hasLayer(l);
+  on ? l.addTo(map) : map.removeLayer(l);
+  $$(`#overlays [data-o="${k}"]`).forEach(x => x.classList.toggle('on', on));
+}
+$$('#bases button').forEach(b => b.onclick = () => setBase(b.dataset.b));
+$$('#overlays button').forEach(b => b.onclick = () => toggleOv(b.dataset.o));
+
+function showCard(r) {
+  const t = r.t;
+  $('#card-num').textContent = r.n; $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
+  const dl = [['Hauteur', `${Math.round(r.h)} m<span class="badge">${r.measured ? 'mesurée LiDAR' : 'typique'}</span>`], ['Couronne', `${Math.round(r.rad * 2)} m de large`], ['Relevé', esc(new Date(t.date).toLocaleDateString('fr-FR'))], ['Position', t.corrected ? 'corrigée sur photo aérienne' : `GPS ± ${Math.round(t.acc || 0)} m`]];
+  if (t.species.score != null) dl.push(['Confiance', `${Math.round(t.species.score * 100)} %`]);
+  if (t.note) dl.push(['Note', esc(t.note)]);
+  $('#card-dl').innerHTML = dl.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
   const ph = $('#card-ph'); ph.innerHTML = '';
   for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (!u) return; const img = new Image(); img.src = u; img.onclick = () => { $('#viewer img').src = u; $('#viewer').classList.remove('hidden'); }; ph.appendChild(img); });
   $('#card').classList.remove('hidden');
@@ -130,62 +191,89 @@ function showCard(t) {
 $('#card-close').onclick = () => $('#card').classList.add('hidden');
 $('#viewer').onclick = () => $('#viewer').classList.add('hidden');
 $('#toggle').onclick = () => $('#panel').classList.toggle('collapsed');
-$('#print').onclick = () => window.print();
+$('#print').onclick = () => { buildPrint(); setTimeout(() => window.print(), 300); };
 
-function draw() {
-  treeLayer.clearLayers(); layers = {};
-  // Les grands arbres d'abord pour que les petits restent cliquables par-dessus
-  const sorted = [...trees].sort((a, b) => D.traits(b).crown - D.traits(a).crown);
-  for (const t of sorted) {
-    const n = D.name(t); if (hidden.has(n)) continue;
-    const tr = D.traits(t), col = D.colorFor(t.species.sci || n);
-    const crown = L.circle([t.lat, t.lon], { radius: tr.crown, color: '#fff', weight: 1.5, fillColor: col, fillOpacity: .55 }).addTo(treeLayer);
-    const dot = L.circleMarker([t.lat, t.lon], { radius: 3, color: '#fff', weight: 1, fillColor: col, fillOpacity: 1 }).addTo(treeLayer);
-    crown.bindTooltip(esc(n), { permanent: true, direction: 'center', className: 'tree-label' });
-    for (const l of [crown, dot]) l.on('click', () => showCard(t));
-    layers[t.id] = crown;
-  }
-  updateLabels();
+// Calcule, pour chaque arbre, sa hauteur et le contour réel de sa couronne (LiDAR) ou une valeur typique
+function measure() {
+  rows = trees.map(t => {
+    const tr = D.traits(t); let h = +t.height || tr.height, rad = tr.crown, outline = null, measured = false;
+    if (lidar && lidar.chm && !(+t.height > 0)) { const m = lidar.crownAt(t.lat, t.lon, Math.max(2.5, Math.min(5, t.corrected ? 2.5 : (t.acc || 4)))); if (m && m.height > 2) { h = m.height; rad = Math.max(1, Math.min(14, m.radius)); outline = m.outline; measured = true; } }
+    return { t, tr, h, rad, outline, measured, color: colors[D.name(t)] || '#5f8a3d' };
+  });
+  // Numérotation stable : par espèce, puis du nord au sud
+  rows.sort((a, b) => D.name(a.t).localeCompare(D.name(b.t)) || b.t.lat - a.t.lat).forEach((r, k) => r.n = k + 1);
 }
-function updateLabels() { const show = map.getZoom() >= 20; treeLayer.eachLayer(l => { const tt = l.getTooltip && l.getTooltip(); if (tt) show ? l.openTooltip() : l.closeTooltip(); }); }
-map.on('zoomend', updateLabels);
+function draw() {
+  crownLayer.clearLayers(); ov.numbers.clearLayers();
+  const sorted = rows.filter(r => !hidden.has(D.name(r.t))).sort((a, b) => b.rad - a.rad);
+  for (const r of sorted) {
+    const shp = r.outline ? L.polygon(r.outline, Object.assign(crownStyle(r), { smoothFactor: .5 })) : L.circle([r.t.lat, r.t.lon], Object.assign(crownStyle(r), { radius: r.rad }));
+    shp.on('click', () => showCard(r)).bindTooltip(`${r.n}. ${esc(D.name(r.t))} · ${Math.round(r.h)} m`, { sticky: true, direction: 'top', offset: [0, -6] }).addTo(crownLayer);
+    L.circleMarker([r.t.lat, r.t.lon], { pane: 'crowns', radius: 4, color: '#fff', weight: 1.5, fillColor: r.color, fillOpacity: 1 }).on('click', () => showCard(r)).addTo(crownLayer);
+    L.marker([r.t.lat, r.t.lon], { pane: 'nums', interactive: false, icon: L.divIcon({ className: 'tnum', html: `<div>${r.n}<b class="nm">${esc(D.name(r.t))}</b></div>`, iconSize: [0, 0] }) }).addTo(ov.numbers);
+  }
+  updateZoomStyle();
+}
+function updateZoomStyle() { const z = map.getZoom(); $$('.tnum b.nm').forEach(b => b.style.display = z >= 20.5 ? 'inline' : 'none'); $$('.tnum').forEach(e => e.style.display = z >= 19.25 ? '' : 'none'); }
+map.on('zoomend', updateZoomStyle);
 
 function renderSpecies() {
-  const q = $('#search').value.trim().toLowerCase();
-  const groups = {};
-  for (const t of trees) { const n = D.name(t); (groups[n] = groups[n] || { n, sci: t.species.sci, items: [] }).items.push(t); }
+  const q = $('#search').value.trim().toLowerCase(), groups = {};
+  for (const r of rows) { const n = D.name(r.t); (groups[n] = groups[n] || { n, sci: r.t.species.sci, items: [] }).items.push(r); }
   const list = Object.values(groups).sort((a, b) => b.items.length - a.items.length || a.n.localeCompare(b.n));
-  $('#species').innerHTML = list.filter(g => !q || (g.n + ' ' + (g.sci || '')).toLowerCase().includes(q)).map(g =>
-    `<label data-n="${esc(g.n)}"><input type="checkbox" ${hidden.has(g.n) ? '' : 'checked'}><i class="sw" style="background:${D.colorFor(g.sci || g.n)}"></i><span class="name">${esc(g.n)}<i>${esc(g.sci || '')}</i></span><span class="n">${g.items.length}</span></label>`).join('') || '<div class="status">Aucun arbre.</div>';
-  $('#species').querySelectorAll('label').forEach(l => {
-    l.querySelector('input').onchange = e => { const n = l.dataset.n; e.target.checked ? hidden.delete(n) : hidden.add(n); draw(); };
-    l.ondblclick = () => { const g = groups[l.dataset.n]; map.fitBounds(g.items.map(t => [t.lat, t.lon]), { maxZoom: 20, padding: [60, 60] }); };
+  $('#species').innerHTML = list.filter(g => !q || (g.n + ' ' + (g.sci || '')).toLowerCase().includes(q)).map(g => {
+    const hm = g.items.reduce((s, r) => s + r.h, 0) / g.items.length;
+    return `<label data-n="${esc(g.n)}"><input type="checkbox" ${hidden.has(g.n) ? '' : 'checked'}><i class="sw" style="background:${colors[g.n]}"></i><span class="name">${esc(g.n)}<i>${esc(g.sci || '')}</i></span><span class="n">${g.items.length}<br><small>≈ ${Math.round(hm)} m</small></span></label>`;
+  }).join('') || '<div class="status">Aucun arbre.</div>';
+  $$('#species label').forEach(l => {
+    l.querySelector('input').onchange = e => { e.target.checked ? hidden.delete(l.dataset.n) : hidden.add(l.dataset.n); draw(); };
+    l.ondblclick = e => { e.preventDefault(); map.fitBounds(groups[l.dataset.n].items.map(r => [r.t.lat, r.t.lon]), { maxZoom: 20, padding: [80, 80] }); };
   });
-  $('#print-legend').innerHTML = list.map(g => `<div><i style="background:${D.colorFor(g.sci || g.n)}"></i>${esc(g.n)} (${g.items.length})</div>`).join('');
-  $('#sub').textContent = `${trees.length} arbres · ${list.length} espèces`;
+  return list;
 }
 $('#search').oninput = renderSpecies;
 
-async function loadBuildings() {
-  const b = map.getBounds().pad(.3);
-  const url = `https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:batiment&OUTPUTFORMAT=application/json&SRSNAME=EPSG:4326&COUNT=500&BBOX=${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()},urn:ogc:def:crs:EPSG::4326`;
-  try {
-    const gj = await (await fetch(url)).json();
-    buildings.clearLayers();
-    L.geoJSON(gj, {
-      coordsToLatLng: c => Math.abs(c[0] - b.getCenter().lat) < Math.abs(c[1] - b.getCenter().lat) ? L.latLng(c[0], c[1]) : L.latLng(c[1], c[0]),
-      style: { color: '#c0392b', weight: 1.5, fillColor: '#e8d5b0', fillOpacity: .6 },
-      onEachFeature: (f, l) => { const h = f.properties && f.properties.hauteur; l.bindTooltip(`Bâtiment${h ? ` · ${Math.round(h)} m` : ''}`); }
-    }).addTo(buildings);
-  } catch (e) { console.warn('Bâtiments indisponibles', e); }
+function buildPrint() {
+  const list = renderSpecies();
+  $('#cartouche').innerHTML = `<h2>Arbres de Roybon</h2><div>${rows.length} arbres · ${list.length} espèces · ${new Date().toLocaleDateString('fr-FR')}</div><div class="leg">${list.map(g => `<div><i style="background:${colors[g.n]}"></i>${esc(g.n)} (${g.items.length})</div>`).join('')}</div>`;
+  $('#print-sheet').innerHTML = `<h2>Index des arbres</h2><table><thead><tr><th>N°</th><th>Espèce</th><th>Nom latin</th><th>Hauteur</th><th>Couronne</th><th>Note</th></tr></thead><tbody>${rows.slice().sort((a, b) => a.n - b.n).map(r => `<tr><td>${r.n}</td><td>${esc(D.name(r.t))}</td><td><i>${esc(r.t.species.sci || '')}</i></td><td>${Math.round(r.h)} m${r.measured ? '' : ' *'}</td><td>${Math.round(r.rad * 2)} m</td><td>${esc(r.t.note || '')}</td></tr>`).join('')}</tbody></table><p>* hauteur typique de l'espèce, non mesurée.</p>`;
 }
-map.on('overlayadd', e => { if (e.layer === buildings) loadBuildings(); });
 
 (async () => {
-  const r = await D.loadTrees(); trees = r.trees;
-  renderSpecies(); draw();
-  if (trees.length) map.fitBounds(trees.map(t => [t.lat, t.lon]), { padding: [60, 60], maxZoom: 19 });
-  else $('#sub').textContent = D.cfg.proxyUrl ? 'Aucun arbre enregistré pour l\'instant' : 'Ouvre d\'abord l\'app de saisie et configure le relais';
+  const res = await D.loadTrees(); trees = res.trees;
+  const names = [...new Set(trees.map(D.name))].sort(); names.forEach((n, k) => colors[n] = PALETTE[k % PALETTE.length]);
+  measure(); renderSpecies(); draw();
+  if (!trees.length) { $('#sub').textContent = D.cfg.proxyUrl ? 'Aucun arbre enregistré pour l\'instant' : 'Ouvre d\'abord l\'app de saisie et configure le relais'; return; }
+  map.fitBounds(trees.map(t => [t.lat, t.lon]), { padding: [60, 60], maxZoom: 19 });
+  $('#sub').textContent = `${trees.length} arbres · ${names.length} espèces · analyse LiDAR en cours…`;
+  // Emprise d'analyse : arbres + 60 m
+  const lats = trees.map(t => t.lat), lons = trees.map(t => t.lon), mLat = 111132, mLon = 111320 * Math.cos(lats[0] * Math.PI / 180);
+  const latMin = Math.min(...lats) - 60 / mLat, latMax = Math.max(...lats) + 60 / mLat, lonMin = Math.min(...lons) - 60 / mLon, lonMax = Math.max(...lons) + 60 / mLon;
+  try {
+    const Lm = await import('./lidar.js');
+    const side = Math.max((latMax - latMin) * mLat, (lonMax - lonMin) * mLon);
+    [lidar, buildings] = await Promise.all([
+      Lm.loadLidar(latMin, lonMin, latMax, lonMax, Math.max(256, Math.min(900, Math.round(side / .5)))),
+      Lm.fetchBuildings(latMin, lonMin, latMax, lonMax).catch(() => []),
+    ]);
+    for (const b of buildings) L.polygon(b.rings, { pane: 'bld', color: '#7a6a58', weight: 1, fillColor: '#d9cdb8', fillOpacity: .85 }).bindTooltip(`Bâtiment${b.height ? ` · ${Math.round(b.height)} m` : ''}`).addTo(ov.buildings);
+    if (lidar.ok) {
+      const bounds = lidar.boundsLatLon;
+      L.imageOverlay(lidar.hillshadeCanvas().toDataURL(), bounds, { pane: 'relief', opacity: .9 }).addTo(ov.relief);
+      $('#overlays [data-o=relief]').disabled = false;
+    }
+    if (lidar.chm) {
+      const bounds = lidar.boundsLatLon;
+      L.imageOverlay(lidar.chmCanvas().toDataURL(), bounds, { pane: 'chm', opacity: .85 }).addTo(ov.chm);
+      $('#overlays [data-o=chm]').disabled = false;
+      measure(); renderSpecies(); draw();
+      const tops = rows.filter(r => r.measured);
+      const det = lidar.detectTrees({ minHeight: 3, max: 3000, exclude: (la, lo) => Lm.inBuildings(la, lo, buildings, 1.5 / mLat) || trees.some(t => Math.hypot((t.lat - la) * mLat, (t.lon - lo) * mLon) < 3) || tops.some(r => r.outline && Math.hypot((r.t.lat - la) * mLat, (r.t.lon - lo) * mLon) < r.rad * .8) });
+      for (const d of det) L.polygon(d.outline, { pane: 'others', className: 'other', color: '#ffffff', weight: 1, dashArray: '3 3', fillColor: '#9fb89a', fillOpacity: .25, interactive: true }).bindTooltip(`Arbre non recensé · ${Math.round(d.height)} m`, { sticky: true }).addTo(ov.others);
+      $('#overlays [data-o=others]').disabled = false;
+      $('#sub').textContent = `${trees.length} arbres recensés · ${names.length} espèces · ${rows.filter(r => r.measured).length} mesurés au LiDAR · ${det.length} autres arbres visibles au LiDAR`;
+    } else $('#sub').textContent = `${trees.length} arbres · ${names.length} espèces${lidar.ok ? ' · relief seul (LiDAR HD pas encore publié ici)' : ''}`;
+  } catch (e) { console.warn(e); $('#sub').textContent = `${trees.length} arbres · ${names.length} espèces`; }
 })();
 </script>
 </body>

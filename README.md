@@ -29,8 +29,13 @@ PWA à installer sur le téléphone. GPS moyenné + photos + identification Pl@n
 
 Deux pages qui lisent les arbres depuis le cloud (même relais que l'app) ou, à défaut, depuis le téléphone. Accès depuis l'onglet Carte de l'app.
 
-**Plan 2D** (`plan.html`) : photo aérienne ou plan IGN, cadastre et bâtiments en option. Chaque arbre est dessiné à l'échelle de son houppier, coloré par espèce. Liste des espèces avec filtre (clic) et zoom (double-clic), fiche avec photos, impression avec légende.
+**Données LiDAR HD (IGN)** : `lidar.js` télécharge le modèle de terrain (MNT) et le modèle de surface (MNS) au demi-mètre. Leur différence donne la hauteur de la végétation, d'où :
+- la hauteur mesurée et le contour réel de la couronne de chaque arbre relevé ;
+- la détection des arbres non recensés (sommets de végétation hors bâtiments) ;
+- le relief ombré et la carte de hauteur de végétation du plan 2D.
 
-**Balade 3D** (`3d.html`) : relief IGN RGE ALTI au mètre, photo aérienne plaquée au sol, bâtiments BD TOPO extrudés à leur hauteur réelle, arbres modélisés selon l'espèce (silhouette, hauteur, largeur, teinte). Deux modes : survol, et balade à hauteur d'homme (clavier et souris, joystick sur téléphone). Clic sur un arbre pour sa fiche.
+Si le LiDAR HD n'est pas publié sur la zone, repli sur le relief RGE ALTI et des hauteurs typiques par espèce.
 
-Les hauteurs d'arbres sont des valeurs typiques par espèce. Un champ `height` (en mètres) sur un arbre remplace la valeur typique.
+**Plan 2D** (`plan.html`) : fonds photo aérienne, plan clair ou plan IGN. Calques relief, hauteur de végétation, autres arbres, bâtiments, cadastre, numéros. Couronnes à leur forme réelle, colorées par espèce. Fiche par arbre. Impression A4 paysage avec cartouche, légende et index numéroté.
+
+**Balade 3D** (`3d.html`) : relief LiDAR, photo aérienne haute définition au sol et sur les toits, paysage environnant, bâtiments BD TOPO à leur hauteur, arbres modélisés par espèce à leur hauteur et largeur mesurées, autres arbres détectés, vent, ciel, étiquettes. Modes survol et balade à hauteur d'homme.

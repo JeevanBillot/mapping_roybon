@@ -7,38 +7,45 @@
 <meta name="theme-color" content="#2f5d3a">
 <link rel="icon" href="icon.svg">
 <style>
-:root { --card:#fff; --fg:#18261b; --muted:#66756a; --line:#dfe6df; --accent:#2f5d3a; --accent-soft:#dcefdc; --shadow:0 4px 18px rgba(20,40,25,.18); }
-@media (prefers-color-scheme: dark) { :root { --card:#1b271d; --fg:#e8efe8; --muted:#9aa89d; --line:#2c3a2e; --accent:#5fa36f; --accent-soft:#233b28; --shadow:0 4px 18px rgba(0,0,0,.5); } }
+:root { --card:rgba(255,255,255,.94); --fg:#18261b; --muted:#66756a; --line:#dfe6df; --accent:#2f5d3a; --accent-soft:#e3efe0; --shadow:0 6px 24px rgba(20,40,25,.18); }
+@media (prefers-color-scheme: dark) { :root { --card:rgba(27,39,29,.94); --fg:#e8efe8; --muted:#9aa89d; --line:#2c3a2e; --accent:#6db07c; --accent-soft:#243a29; --shadow:0 6px 24px rgba(0,0,0,.5); } }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-html, body { margin:0; height:100%; overflow:hidden; background:#bcd9f0; font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif; color:var(--fg); touch-action:none; }
+html, body { margin:0; height:100%; overflow:hidden; background:#cfe0ea; font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif; color:var(--fg); touch-action:none; }
 canvas { display:block; }
-.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
-.hud { position:fixed; top:12px; left:12px; z-index:10; background:var(--card); border-radius:16px; box-shadow:var(--shadow); padding:12px; width:280px; }
-.hud h1 { margin:0 0 2px; font-size:1rem; display:flex; align-items:center; gap:8px; }
-.hud .sub { font-size:.78rem; color:var(--muted); margin-bottom:10px; }
+.i { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.hud { position:fixed; top:12px; left:12px; z-index:10; background:var(--card); backdrop-filter:blur(10px); border-radius:18px; box-shadow:var(--shadow); padding:14px; width:292px; }
+.hud h1 { margin:0 0 2px; font-size:1.02rem; display:flex; align-items:center; gap:8px; letter-spacing:-.01em; }
+.hud .sub { font-size:.76rem; color:var(--muted); margin-bottom:12px; line-height:1.4; }
 .row { display:flex; gap:6px; }
 .row a, .row button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:9px 6px; border-radius:10px; border:0; background:var(--accent-soft); color:var(--accent); font:600 .8rem system-ui; font-family:inherit; text-decoration:none; cursor:pointer; }
-.seg { display:flex; background:var(--accent-soft); border-radius:10px; padding:3px; margin-top:8px; }
+.seg { display:flex; background:var(--accent-soft); border-radius:11px; padding:3px; margin-top:8px; }
 .seg button { flex:1; border:0; background:none; padding:8px; border-radius:8px; font:600 .8rem system-ui; font-family:inherit; color:var(--accent); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; }
 .seg button.on { background:var(--accent); color:#fff; }
-.help { font-size:.75rem; color:var(--muted); margin-top:8px; line-height:1.4; }
-#loading { position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; background:#2f5d3a; color:#fff; font-size:.95rem; }
-#loading .spin { width:36px; height:36px; border:3px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin 1s linear infinite; }
-#loading .bar { width:220px; height:4px; background:rgba(255,255,255,.2); border-radius:2px; overflow:hidden; } #loading .bar div { height:100%; width:0; background:#fff; transition:width .2s; }
+.toggles { display:flex; gap:6px; margin-top:8px; }
+.toggles button { flex:1; border:1px solid var(--line); background:none; color:var(--muted); border-radius:10px; padding:7px; font:600 .75rem system-ui; font-family:inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; }
+.toggles button.on { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+.help { font-size:.74rem; color:var(--muted); margin-top:10px; line-height:1.45; }
+.warn { font-size:.74rem; color:#a36a00; margin-top:8px; line-height:1.4; }
+#loading { position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:radial-gradient(circle at 50% 40%, #3b7048, #1f3d27); color:#fff; font-size:.95rem; }
+#loading .spin { width:38px; height:38px; border:3px solid rgba(255,255,255,.25); border-top-color:#fff; border-radius:50%; animation:spin 1s linear infinite; }
+#loading .bar { width:240px; height:4px; background:rgba(255,255,255,.2); border-radius:2px; overflow:hidden; } #loading .bar div { height:100%; width:0; background:#fff; transition:width .3s; }
 @keyframes spin { to { transform:rotate(360deg); } }
-#tip { position:fixed; z-index:20; pointer-events:none; background:rgba(0,0,0,.72); color:#fff; padding:5px 10px; border-radius:8px; font-size:.8rem; font-weight:600; white-space:nowrap; transform:translate(-50%, -140%); }
+#labels { position:fixed; inset:0; pointer-events:none; z-index:5; overflow:hidden; }
+.lbl { position:absolute; left:0; top:0; transform:translate(-50%,-100%); background:rgba(20,30,22,.78); color:#fff; font-size:11.5px; font-weight:600; padding:3px 8px 3px 6px; border-radius:10px; white-space:nowrap; display:flex; align-items:center; gap:5px; will-change:transform; }
+.lbl i { width:8px; height:8px; border-radius:50%; display:inline-block; }
+#tip { position:fixed; z-index:20; pointer-events:none; background:rgba(0,0,0,.75); color:#fff; padding:5px 10px; border-radius:8px; font-size:.8rem; font-weight:600; white-space:nowrap; transform:translate(-50%, -150%); }
 #cross { position:fixed; left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; z-index:15; pointer-events:none; }
 #cross::before, #cross::after { content:""; position:absolute; background:rgba(255,255,255,.9); box-shadow:0 0 2px #000; } #cross::before { left:6px; top:0; width:2px; height:14px; } #cross::after { top:6px; left:0; height:2px; width:14px; }
-#joy { position:fixed; left:24px; bottom:calc(24px + env(safe-area-inset-bottom)); width:120px; height:120px; border-radius:50%; background:rgba(255,255,255,.22); border:2px solid rgba(255,255,255,.5); z-index:15; backdrop-filter:blur(3px); }
-#joy div { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px; border-radius:50%; background:rgba(255,255,255,.85); box-shadow:0 2px 8px rgba(0,0,0,.3); }
-.card { position:fixed; z-index:30; right:12px; top:12px; width:300px; background:var(--card); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; }
-.card .ph { display:grid; grid-template-columns:repeat(2,1fr); gap:2px; background:var(--line); } .card .ph img { width:100%; aspect-ratio:1; object-fit:cover; display:block; } .card .ph img:only-child { grid-column:span 2; aspect-ratio:4/3; }
-.card .body { padding:14px 16px; } .card h2 { margin:0; font-size:1.1rem; } .card .sci { color:var(--muted); font-style:italic; font-size:.9rem; }
-.card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:12px 0 0; font-size:.85rem; } .card dt { color:var(--muted); } .card dd { margin:0; }
-.card .close { position:absolute; top:8px; right:8px; width:32px; height:32px; border-radius:50%; border:0; background:rgba(0,0,0,.5); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+#joy { position:fixed; left:24px; bottom:calc(24px + env(safe-area-inset-bottom)); width:124px; height:124px; border-radius:50%; background:rgba(255,255,255,.2); border:2px solid rgba(255,255,255,.55); z-index:15; backdrop-filter:blur(3px); }
+#joy div { position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%; background:rgba(255,255,255,.9); box-shadow:0 2px 8px rgba(0,0,0,.3); }
+.card { position:fixed; z-index:30; right:12px; top:12px; width:310px; background:var(--card); backdrop-filter:blur(10px); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; }
+.card .ph { display:grid; grid-template-columns:repeat(2,1fr); gap:2px; } .card .ph img { width:100%; aspect-ratio:1; object-fit:cover; display:block; } .card .ph img:only-child { grid-column:span 2; aspect-ratio:4/3; }
+.card .body { padding:14px 16px 16px; } .card h2 { margin:0; font-size:1.12rem; } .card .sci { color:var(--muted); font-style:italic; font-size:.9rem; }
+.card dl { display:grid; grid-template-columns:auto 1fr; gap:5px 14px; margin:12px 0 0; font-size:.85rem; } .card dt { color:var(--muted); } .card dd { margin:0; font-weight:500; }
+.card .close { position:absolute; top:8px; right:8px; width:32px; height:32px; border-radius:50%; border:0; background:rgba(0,0,0,.5); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:1; }
+.badge { display:inline-block; font-size:.68rem; font-weight:700; padding:1px 6px; border-radius:6px; background:var(--accent-soft); color:var(--accent); margin-left:6px; vertical-align:1px; }
 .hidden { display:none !important; }
-.warn { font-size:.75rem; color:#b8860b; margin-top:6px; }
-@media (max-width: 700px) { .hud { right:12px; width:auto; } .card { left:12px; right:12px; width:auto; top:auto; bottom:calc(12px + env(safe-area-inset-bottom)); } .card .ph img { aspect-ratio:16/10; } .hud .help { display:none; } }
+@media (max-width: 700px) { .hud { right:12px; width:auto; padding:12px; } .hud .help { display:none; } .card { left:12px; right:12px; width:auto; top:auto; bottom:calc(12px + env(safe-area-inset-bottom)); } .card .ph img { aspect-ratio:16/10; } }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
@@ -49,10 +56,13 @@ canvas { display:block; }
   <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
   <symbol id="i-orbit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 12a9 4 0 1 0 18 0 9 4 0 1 0-18 0"/></symbol>
   <symbol id="i-walk" viewBox="0 0 24 24"><circle cx="13" cy="4" r="2"/><path d="m9 20 3-6 3 2v4"/><path d="m6 12 3-4 4 1 3 3 3 1"/><path d="m12 14-1-5"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5"/></symbol>
+  <symbol id="i-forest" viewBox="0 0 24 24"><path d="M8 19a4 4 0 0 1-2.24-7.32A3.5 3.5 0 0 1 9 6.03V6a3 3 0 1 1 6 0v.04a3.5 3.5 0 0 1 3.24 5.65A4 4 0 0 1 16 19Z"/><path d="M12 19v3"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
 </svg>
 
 <div id="loading"><div class="spin"></div><div id="load-text">Chargement des arbres…</div><div class="bar"><div id="load-bar"></div></div></div>
+<div id="labels"></div>
 
 <div class="hud">
   <h1><svg class="i"><use href="#i-trees"/></svg>Roybon en 3D</h1>
@@ -64,6 +74,10 @@ canvas { display:block; }
   <div class="seg">
     <button id="m-orbit" class="on"><svg class="i"><use href="#i-orbit"/></svg>Survol</button>
     <button id="m-walk"><svg class="i"><use href="#i-walk"/></svg>Balade</button>
+  </div>
+  <div class="toggles">
+    <button id="t-labels" class="on"><svg class="i"><use href="#i-tag"/></svg>Noms</button>
+    <button id="t-others" class="on"><svg class="i"><use href="#i-forest"/></svg>Autres arbres</button>
   </div>
   <div class="help" id="help"></div>
   <div class="warn hidden" id="warn"></div>
@@ -84,176 +98,328 @@ canvas { display:block; }
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { loadLidar, fetchBuildings, inBuildings, merc } from './lidar.js';
 
 const D = window.RoybonData, $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const isTouch = matchMedia('(pointer: coarse)').matches;
-const progress = (txt, p) => { $('#load-text').textContent = txt; $('#load-bar').style.width = Math.round(p * 100) + '%'; };
+const progress = (txt, p) => { $('#load-text').textContent = txt; if (p != null) $('#load-bar').style.width = Math.round(p * 100) + '%'; };
 const warn = msg => { const w = $('#warn'); w.classList.remove('hidden'); w.innerHTML += (w.innerHTML ? '<br>' : '') + esc(msg); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-// ---------- 1. Arbres et emprise ----------
-progress('Chargement des arbres…', .05);
+try {
+// ---------- 1. Arbres, emprise, repère local ----------
+progress('Chargement des arbres…', .04);
 const { trees } = await D.loadTrees();
 let lat0, lon0;
 if (trees.length) { lat0 = trees.reduce((s, t) => s + t.lat, 0) / trees.length; lon0 = trees.reduce((s, t) => s + t.lon, 0) / trees.length; }
 else { [lat0, lon0] = D.DEFAULT_CENTER; warn('Aucun arbre enregistré : affichage du terrain seul.'); }
 const phi = lat0 * Math.PI / 180;
-const mLat = 111132.954 - 559.822 * Math.cos(2 * phi) + 1.175 * Math.cos(4 * phi);
-const mLon = 111412.84 * Math.cos(phi) - 93.5 * Math.cos(3 * phi);
+const mLat = 111132.954 - 559.822 * Math.cos(2 * phi) + 1.175 * Math.cos(4 * phi), mLon = 111412.84 * Math.cos(phi) - 93.5 * Math.cos(3 * phi);
 const toLocal = (lat, lon) => ({ x: (lon - lon0) * mLon, z: -(lat - lat0) * mLat });
+const toLatLon = (x, z) => [lat0 - z / mLat, lon0 + x / mLon];
 let ext = 0; for (const t of trees) { const p = toLocal(t.lat, t.lon); ext = Math.max(ext, Math.abs(p.x), Math.abs(p.z)); }
-const S = Math.max(160, Math.ceil(ext + 70));          // demi-côté de la zone, en mètres
+const S = Math.ceil(Math.max(170, ext + 100));
 const latMin = lat0 - S / mLat, latMax = lat0 + S / mLat, lonMin = lon0 - S / mLon, lonMax = lon0 + S / mLon;
-$('#sub').textContent = `${trees.length} arbres · zone de ${Math.round(2 * S)} m de côté`;
 
-// ---------- 2. Relief (IGN RGE ALTI, 1 m) ----------
-const N = 56;
-async function loadElevation() {
-  const key = `terrain:${lat0.toFixed(5)}:${lon0.toFixed(5)}:${S}:${N}`;
-  try { const c = JSON.parse(localStorage.getItem(key)); if (c && c.length === N * N) return c; } catch (e) {}
-  const lats = [], lons = [];
-  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) { lats.push((latMax - (latMax - latMin) * i / (N - 1)).toFixed(7)); lons.push((lonMin + (lonMax - lonMin) * j / (N - 1)).toFixed(7)); }
-  const out = []; const CH = 150;
-  for (let k = 0; k < lats.length; k += CH) {
-    progress('Relief IGN…', .1 + .5 * k / lats.length);
-    const url = `https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json?lon=${lons.slice(k, k + CH).join('|')}&lat=${lats.slice(k, k + CH).join('|')}&resource=ign_rge_alti_wld&zonly=true&delimiter=|`;
-    let ok = false;
-    for (let a = 0; a < 3 && !ok; a++) {
-      try { const r = await fetch(url); if (r.ok) { const j = await r.json(); for (const z of j.elevations) out.push(typeof z === 'number' ? z : z.z); ok = true; } else await sleep(600); } catch (e) { await sleep(600); }
+// ---------- 2. Relief et végétation (LiDAR HD), bâtiments ----------
+const size = clamp(Math.round(2 * S / .6), 384, 768);
+const [lidar, buildings] = await Promise.all([
+  loadLidar(latMin, lonMin, latMax, lonMax, size, t => progress(t, .15)),
+  fetchBuildings(latMin, lonMin, latMax, lonMax).catch(e => { warn('Bâtiments IGN indisponibles.'); return []; }),
+]);
+progress('Analyse du relief…', .45);
+let groundLL;
+if (lidar.ok) groundLL = (lat, lon) => lidar.ground(lat, lon);
+else {
+  // Dernier recours : service d'altitude point par point (maillage grossier)
+  warn('Relief détaillé indisponible : relief approché.');
+  const N = 40, H = [];
+  try {
+    const pts = []; for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) pts.push([latMax - (latMax - latMin) * i / (N - 1), lonMin + (lonMax - lonMin) * j / (N - 1)]);
+    for (let k = 0; k < pts.length; k += 150) {
+      const ch = pts.slice(k, k + 150);
+      const r = await fetch(`https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json?lon=${ch.map(p => p[1].toFixed(7)).join('|')}&lat=${ch.map(p => p[0].toFixed(7)).join('|')}&resource=ign_rge_alti_wld&zonly=true&delimiter=|`);
+      for (const z of (await r.json()).elevations) H.push(typeof z === 'number' ? z : z.z);
+      await sleep(220);
     }
-    if (!ok) throw new Error('relief');
-    await sleep(210); // limite IGN : 5 requêtes / s
-  }
-  const valid = out.filter(z => z > -1000); const fill = valid.length ? valid.reduce((a, b) => a + b) / valid.length : 0;
-  const h = out.map(z => z > -1000 ? z : fill);
-  try { localStorage.setItem(key, JSON.stringify(h)); } catch (e) {}
-  return h;
+  } catch (e) { H.length = 0; }
+  if (H.length !== N * N) { H.length = 0; for (let k = 0; k < N * N; k++) H.push(0); warn('Relief indisponible : terrain plat.'); }
+  groundLL = (lat, lon) => { const fi = clamp((latMax - lat) / (latMax - latMin) * (N - 1), 0, N - 1.001), fj = clamp((lon - lonMin) / (lonMax - lonMin) * (N - 1), 0, N - 1.001); const i = fi | 0, j = fj | 0, a = fi - i, b = fj - j; return H[i * N + j] * (1 - a) * (1 - b) + H[i * N + j + 1] * (1 - a) * b + H[(i + 1) * N + j] * a * (1 - b) + H[(i + 1) * N + j + 1] * a * b; };
 }
-let H;
-try { H = await loadElevation(); } catch (e) { H = new Array(N * N).fill(0); warn('Relief IGN indisponible : terrain plat.'); }
-const hMin = Math.min(...H); H = H.map(z => z - hMin);
-function groundAt(x, z) {
-  const fj = Math.min(N - 1.001, Math.max(0, (x + S) / (2 * S) * (N - 1))), fi = Math.min(N - 1.001, Math.max(0, (z + S) / (2 * S) * (N - 1)));
-  const i = Math.floor(fi), j = Math.floor(fj), di = fi - i, dj = fj - j;
-  const a = H[i * N + j], b = H[i * N + j + 1], c = H[(i + 1) * N + j], d = H[(i + 1) * N + j + 1];
-  return a * (1 - di) * (1 - dj) + b * (1 - di) * dj + c * di * (1 - dj) + d * di * dj;
-}
+let base = Infinity; for (let i = 0; i <= 20; i++) for (let j = 0; j <= 20; j++) base = Math.min(base, groundLL(latMin + (latMax - latMin) * i / 20, lonMin + (lonMax - lonMin) * j / 20));
+const groundAt = (x, z) => groundLL(...toLatLon(x, z)) - base;
 
-// ---------- 3. Scène ----------
-progress('Construction de la scène…', .62);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+// ---------- 3. Rendu ----------
+progress('Construction de la scène…', .55);
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2)); renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
-const SKY = new THREE.Color('#bcd9f0'); scene.background = SKY; scene.fog = new THREE.Fog(SKY, S * 1.3, S * 4.5);
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.3, S * 8);
-scene.add(new THREE.HemisphereLight('#dcecff', '#7d8a5a', 1.35));
-const sun = new THREE.DirectionalLight('#fff2dc', 2.4); sun.position.set(-S * .6, S * 1.1, S * .5); sun.castShadow = true;
-sun.shadow.mapSize.set(4096, 4096); Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 1, far: S * 4 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
+const HORIZON = new THREE.Color('#dfe9ee');
+scene.fog = new THREE.Fog(HORIZON, S * 1.2, S * 5);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, .3, S * 12);
+const U = { time: { value: 0 } };
+
+// Ciel en dégradé
+const sky = new THREE.Mesh(new THREE.SphereGeometry(S * 10, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color('#5d97c9') }, mid: { value: new THREE.Color('#a9cbe3') }, bottom: { value: HORIZON } },
+  vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+  fragmentShader: 'uniform vec3 top; uniform vec3 mid; uniform vec3 bottom; varying vec3 vP; void main(){ float h = vP.y; vec3 c = h > 0. ? mix(mid, top, smoothstep(0.05, 0.6, h)) : bottom; c = mix(bottom, c, smoothstep(-0.02, 0.12, h)); gl_FragColor = vec4(c,1.); }',
+}));
+scene.add(sky);
+
+scene.add(new THREE.HemisphereLight('#e3f0ff', '#7f8a58', 1.25));
+const sun = new THREE.DirectionalLight('#fff0d6', 2.7);
+sun.position.set(-S * .55, S * .9, S * .45); sun.castShadow = true;
+const sm = isTouch ? 2048 : 4096; sun.shadow.mapSize.set(sm, sm);
+Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 1, far: S * 4 }); sun.shadow.bias = -.0003; sun.shadow.normalBias = .5;
 scene.add(sun);
 
-// Terrain + orthophoto IGN
-const R = 6378137, merc = (lat, lon) => [R * lon * Math.PI / 180, R * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))];
+// Photo aérienne IGN en 4 dalles (4096 px) ou 1 dalle (2048 px)
 const [mx0, my0] = merc(latMin, lonMin), [mx1, my1] = merc(latMax, lonMax);
-const tGeo = new THREE.PlaneGeometry(2 * S, 2 * S, N - 1, N - 1); tGeo.rotateX(-Math.PI / 2);
-const pos = tGeo.attributes.position, uv = tGeo.attributes.uv;
-for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
-  const k = i * N + j; pos.setY(k, H[k]);
-  const [mx, my] = merc(latMax - (latMax - latMin) * i / (N - 1), lonMin + (lonMax - lonMin) * j / (N - 1));
-  uv.setXY(k, (mx - mx0) / (mx1 - mx0), (my - my0) / (my1 - my0));
+const uvOf = (lat, lon) => { const [x, y] = merc(lat, lon); return [(x - mx0) / (mx1 - mx0), (y - my0) / (my1 - my0)]; };
+const wms = (b, px) => `https://data.geopf.fr/wms-r?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ORTHOIMAGERY.ORTHOPHOTOS&STYLES=&CRS=EPSG:3857&BBOX=${b.join(',')}&WIDTH=${px}&HEIGHT=${px}&FORMAT=image/jpeg`;
+const loadImg = src => new Promise((res, rej) => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => res(im); im.onerror = rej; im.src = src; });
+async function loadOrtho() {
+  const big = renderer.capabilities.maxTextureSize >= 4096 && !isTouch;
+  const cv = document.createElement('canvas'); const T = big ? 4096 : 2048; cv.width = cv.height = T; const ctx = cv.getContext('2d');
+  if (big) {
+    const xm = (mx0 + mx1) / 2, ym = (my0 + my1) / 2;
+    const tiles = [[mx0, ym, xm, my1, 0, 0], [xm, ym, mx1, my1, 1, 0], [mx0, my0, xm, ym, 0, 1], [xm, my0, mx1, ym, 1, 1]];
+    const ims = await Promise.all(tiles.map(t => loadImg(wms(t.slice(0, 4), 2048))));
+    ims.forEach((im, k) => ctx.drawImage(im, tiles[k][4] * 2048, tiles[k][5] * 2048, 2048, 2048));
+  } else ctx.drawImage(await loadImg(wms([mx0, my0, mx1, my1], 2048)), 0, 0, T, T);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); return tex;
 }
-tGeo.computeVertexNormals();
-const tMat = new THREE.MeshStandardMaterial({ color: '#7a9a55', roughness: 1 });
-const terrain = new THREE.Mesh(tGeo, tMat); terrain.receiveShadow = true; scene.add(terrain);
-const orthoURL = `https://data.geopf.fr/wms-r?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ORTHOIMAGERY.ORTHOPHOTOS&STYLES=&CRS=EPSG:3857&BBOX=${mx0},${my0},${mx1},${my1}&WIDTH=2048&HEIGHT=2048&FORMAT=image/jpeg`;
-new THREE.TextureLoader().setCrossOrigin('anonymous').load(orthoURL, tex => {
-  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  tMat.map = tex; tMat.color.set('#ffffff'); tMat.needsUpdate = true;
-}, undefined, () => warn('Photo aérienne indisponible : sol uni.'));
-// Sol lointain pour éviter le vide au-delà de la zone
-const far = new THREE.Mesh(new THREE.RingGeometry(S * 1.41, S * 8, 64, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#6d8a4c', roughness: 1 }));
-far.position.y = Math.min(...[H[0], H[N - 1], H[N * N - 1], H[N * (N - 1)]]) - 0.5; scene.add(far);
-const skirt = new THREE.Mesh(new THREE.PlaneGeometry(S * 2.9, S * 2.9).rotateX(-Math.PI / 2), far.material); skirt.position.y = far.position.y - 0.05; scene.add(skirt);
+progress('Photo aérienne IGN…', .6);
+let ortho = null; try { ortho = await loadOrtho(); } catch (e) { warn('Photo aérienne indisponible : sol uni.'); }
 
-// ---------- 4. Bâtiments (BD TOPO, avec hauteur) ----------
-progress('Bâtiments IGN…', .7);
-try {
-  const url = `https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:batiment&OUTPUTFORMAT=application/json&SRSNAME=EPSG:4326&COUNT=400&BBOX=${latMin},${lonMin},${latMax},${lonMax},urn:ogc:def:crs:EPSG::4326`;
-  const gj = await (await fetch(url)).json();
-  const wall = new THREE.MeshStandardMaterial({ color: '#e8dcc4', roughness: .9 }), roof = new THREE.MeshStandardMaterial({ color: '#9a4f3a', roughness: .8 });
-  const ll = c => Math.abs(c[0] - lat0) < Math.abs(c[1] - lat0) ? toLocal(c[0], c[1]) : toLocal(c[1], c[0]);
-  let n = 0;
-  for (const f of gj.features || []) {
-    const g = f.geometry; if (!g) continue;
-    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-    const hgt = +(f.properties && f.properties.hauteur) || 6;
-    for (const rings of polys) {
-      const pts = rings[0].map(ll); if (pts.length < 3) continue;
-      const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p.x, -p.z)));
-      for (const hole of rings.slice(1)) shape.holes.push(new THREE.Path(hole.map(ll).map(p => new THREE.Vector2(p.x, -p.z))));
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: hgt, bevelEnabled: false }); geo.rotateX(-Math.PI / 2);
-      const base = Math.min(...pts.map(p => groundAt(p.x, p.z)));
-      const m = new THREE.Mesh(geo, [roof, wall]); m.position.y = base - 0.3; m.castShadow = m.receiveShadow = true; scene.add(m); n++;
-    }
+// Texture de détail (grain d'herbe) pour la vue au sol
+function detailTexture() {
+  const n = 256, cv = document.createElement('canvas'); cv.width = cv.height = n; const ctx = cv.getContext('2d'), img = ctx.createImageData(n, n);
+  const r = (() => { let s = 9; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); })();
+  const g = new Float32Array(n * n); for (let k = 0; k < n * n; k++) g[k] = r();
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { let v = 0, w = 0; for (let d = -2; d <= 2; d++) { v += g[((i + d + n) % n) * n + j] + g[i * n + (j + d + n) % n]; w += 2; } const f = .55 * (v / w) + .45 * g[i * n + j]; const k = (i * n + j) * 4; img.data[k] = img.data[k + 1] = img.data[k + 2] = 255 * f; img.data[k + 3] = 255; }
+  ctx.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+const detail = detailTexture();
+let canopyTex = null;
+if (lidar.chm) { // masque de canopée, même emprise que la photo aérienne
+  const { w, h } = lidar, s = lidar.smooth, cv = document.createElement('canvas'); cv.width = w; cv.height = h; const ctx = cv.getContext('2d'), img = ctx.createImageData(w, h);
+  for (let k = 0; k < w * h; k++) { const v = clamp((s[k] - 2) / 3, 0, 1) * 255; img.data[k * 4] = img.data[k * 4 + 1] = img.data[k * 4 + 2] = v; img.data[k * 4 + 3] = 255; }
+  ctx.putImageData(img, 0, 0); canopyTex = new THREE.CanvasTexture(cv); canopyTex.flipY = true;
+}
+
+// Terrain
+const M = isTouch ? 193 : 289;
+const tGeo = new THREE.PlaneGeometry(2 * S, 2 * S, M - 1, M - 1); tGeo.rotateX(-Math.PI / 2);
+{ const pos = tGeo.attributes.position, uv = tGeo.attributes.uv;
+  for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); pos.setY(k, groundAt(x, z)); uv.setXY(k, ...uvOf(...toLatLon(x, z))); }
+  tGeo.computeVertexNormals(); }
+const tMat = new THREE.MeshStandardMaterial({ color: ortho ? '#ffffff' : '#7b9a58', map: ortho, roughness: 1 });
+tMat.onBeforeCompile = sh => {
+  sh.uniforms.uDetail = { value: detail }; sh.uniforms.uCanopy = { value: canopyTex }; sh.defines = sh.defines || {}; if (canopyTex && ortho) sh.defines.USE_CANOPY = '';
+  sh.vertexShader = 'varying vec2 vWxz;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n vWxz = (modelMatrix * vec4(transformed, 1.0)).xz;');
+  sh.fragmentShader = 'uniform sampler2D uDetail; uniform sampler2D uCanopy; varying vec2 vWxz;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+ #ifdef USE_CANOPY
+   float cm = texture2D(uCanopy, vMapUv).r;
+   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.5, 0.58, 0.42), cm * 0.8);
+ #endif
+ float dn = texture2D(uDetail, vWxz * 0.45).r * 0.6 + texture2D(uDetail, vWxz * 0.07).r * 0.4;
+ diffuseColor.rgb *= mix(0.8, 1.15, dn);`);
+};
+const terrain = new THREE.Mesh(tGeo, tMat); terrain.receiveShadow = true; scene.add(terrain);
+{ // Paysage environnant : raccordé au bord de la zone, photo aérienne élargie
+  let edge = 0, n = 0; for (let k = -10; k <= 10; k++) for (const [x, z] of [[k * S / 10, -S], [k * S / 10, S], [-S, k * S / 10], [S, k * S / 10]]) { edge += groundAt(x, z); n++; }
+  edge /= n; const F = S * 5, FN = 97;
+  const fGeo = new THREE.PlaneGeometry(2 * F, 2 * F, FN - 1, FN - 1); fGeo.rotateX(-Math.PI / 2);
+  const [fx0, fy0] = merc(lat0 - F / mLat, lon0 - F / mLon), [fx1, fy1] = merc(lat0 + F / mLat, lon0 + F / mLon);
+  const pos = fGeo.attributes.position, uv = fGeo.attributes.uv;
+  for (let k = 0; k < pos.count; k++) {
+    const x = pos.getX(k), z = pos.getZ(k), out = Math.max(Math.abs(x), Math.abs(z)) - S;
+    const g = groundAt(clamp(x, -S, S), clamp(z, -S, S)), t = clamp(out / (S * 1.5), 0, 1);
+    pos.setY(k, (out < 0 ? g - .6 : g + (edge - g) * t * t * (3 - 2 * t)) - .05);
+    const [la, lo] = toLatLon(x, z), [mx, my] = merc(la, lo); uv.setXY(k, (mx - fx0) / (fx1 - fx0), (my - fy0) / (fy1 - fy0));
   }
-  if (n) $('#sub').textContent += ` · ${n} bâtiments`;
-} catch (e) { warn('Bâtiments IGN indisponibles.'); }
+  fGeo.computeVertexNormals();
+  const farMat = new THREE.MeshStandardMaterial({ color: '#7b9a58', roughness: 1 });
+  const far = new THREE.Mesh(fGeo, farMat); far.receiveShadow = true; scene.add(far);
+  loadImg(wms([fx0, fy0, fx1, fy1], 2048)).then(im => { const t = new THREE.Texture(im); t.needsUpdate = true; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; farMat.map = t; farMat.color.set('#ffffff'); farMat.needsUpdate = true; }).catch(() => {});
+}
+
+// ---------- 4. Bâtiments ----------
+{
+  const wall = new THREE.MeshStandardMaterial({ color: '#e6dccb', roughness: .95 });
+  const roof = ortho ? new THREE.MeshStandardMaterial({ map: ortho, roughness: .85 }) : new THREE.MeshStandardMaterial({ color: '#9c5a44', roughness: .85 });
+  for (const b of buildings) {
+    const pts = b.rings[0].map(([la, lo]) => toLocal(la, lo)); if (pts.length < 4) continue;
+    if (pts.every(p => Math.abs(p.x) > S || Math.abs(p.z) > S)) continue;
+    const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p.x, -p.z)));
+    for (const hole of b.rings.slice(1)) shape.holes.push(new THREE.Path(hole.map(([la, lo]) => toLocal(la, lo)).map(p => new THREE.Vector2(p.x, -p.z))));
+    const g0 = Math.min(...pts.map(p => groundAt(p.x, p.z)));
+    let hgt = b.height;
+    if (!hgt && lidar.mns) { const c = pts.reduce((a, p) => ({ x: a.x + p.x / pts.length, z: a.z + p.z / pts.length }), { x: 0, z: 0 }); hgt = lidar.sample(lidar.mns, ...toLatLon(c.x, c.z)) - base - g0; }
+    hgt = clamp(hgt || 6, 2.5, 30);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: hgt + .4, bevelEnabled: false }); geo.rotateX(-Math.PI / 2); geo.translate(0, g0 - .4, 0);
+    const p = geo.attributes.position, uv = geo.attributes.uv;
+    for (let k = 0; k < p.count; k++) uv.setXY(k, ...uvOf(...toLatLon(p.getX(k), p.getZ(k))));
+    const m = new THREE.Mesh(geo, [roof, wall]); m.castShadow = m.receiveShadow = true; scene.add(m);
+  }
+}
 
 // ---------- 5. Arbres ----------
-progress('Plantation des arbres…', .85);
-const rnd = seed => { let s = 0; for (const c of seed) s = (s * 31 + c.charCodeAt(0)) >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
-function blob(r, detail = 2) {
-  const parts = [];
-  for (let k = 0; k < 4; k++) {
-    const g = new THREE.IcosahedronGeometry(k ? .55 + r() * .2 : 1, detail);
-    const p = g.attributes.position;
-    const o1 = r() * 10, o2 = r() * 10; // même déformation pour les sommets partagés : pas de faces détachées
-    for (let v = 0; v < p.count; v++) { const x = p.getX(v), y = p.getY(v), z = p.getZ(v); const s = 1 + .12 * Math.sin(x * 4.1 + o1 + y * 2.3) * Math.cos(z * 3.7 + o2 - y * 1.9); p.setXYZ(v, x * s, y * s, z * s); }
-    if (k) { const a = r() * Math.PI * 2; g.translate(Math.cos(a) * .55, (r() - .3) * .5, Math.sin(a) * .55); }
-    parts.push(g);
+progress('Mesure des arbres (LiDAR)…', .7);
+const rndOf = seed => { let s = 0; for (const c of String(seed)) s = (s * 31 + c.charCodeAt(0)) >>> 0; s = s || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
+const ico = (r, rad, detail = 1) => {
+  const g = new THREE.IcosahedronGeometry(rad, detail), p = g.attributes.position, o1 = r() * 9, o2 = r() * 9;
+  for (let v = 0; v < p.count; v++) { const x = p.getX(v), y = p.getY(v), z = p.getZ(v), f = 1 + .16 * Math.sin(x / rad * 3.1 + o1 + y / rad * 2.2) * Math.cos(z / rad * 2.8 + o2 - y / rad * 1.7); p.setXYZ(v, x * f, y * f, z * f); }
+  return g;
+};
+// Construit un houppier en espace unitaire : rayon horizontal 1, hauteur de 0 à 1, couleurs par sommet.
+function crownGeometry(shape, seed, hex, detailLevel = 2) {
+  const r = rndOf(seed), parts = [];
+  const blob = (x, y, z, rad, sy = 1) => { const g = ico(r, rad, detailLevel); g.scale(1, sy, 1); g.translate(x, y, z); parts.push(g); };
+  if (shape === 'conifer') {
+    const tiers = 7;
+    for (let k = 0; k < tiers; k++) {
+      const f = k / tiers, rad = (1 - f * .85), hh = .3;
+      const g = new THREE.ConeGeometry(rad, hh, 11, 1, true), p = g.attributes.position;
+      for (let v = 0; v < p.count; v++) if (p.getY(v) < 0) { p.setY(v, p.getY(v) - r() * .06); const s = .9 + r() * .2; p.setX(v, p.getX(v) * s); p.setZ(v, p.getZ(v) * s); }
+      g.rotateY(r() * 6); g.translate((r() - .5) * .04, f * .8 + hh / 2, (r() - .5) * .04); parts.push(g);
+      const cap = new THREE.CircleGeometry(rad, 11); cap.rotateX(Math.PI / 2); cap.translate(0, f * .8, 0); parts.push(cap);
+    }
+    const tip = new THREE.ConeGeometry(.12, .12, 8); tip.translate(0, .97, 0); parts.push(tip);
+  } else if (shape === 'pine') {
+    for (let k = 0; k < 6; k++) { const a = k / 6 * 6.28 + r(), d = k ? .55 : 0; blob(Math.cos(a) * d, .55 + r() * .15, Math.sin(a) * d, .5 + r() * .12, .55); }
+    blob(0, .78, 0, .45, .5);
+  } else if (shape === 'columnar') {
+    for (let k = 0; k < 8; k++) { const y = .08 + k * .12, rad = .75 * Math.sin(Math.PI * (y * .95 + .03)) + .15; blob((r() - .5) * .25, y + .05, (r() - .5) * .25, rad, 1.25); }
+  } else if (shape === 'weeping') {
+    blob(0, .62, 0, .6, .8);
+    for (let k = 0; k < 9; k++) { const a = k / 9 * 6.28 + r() * .4; blob(Math.cos(a) * .72, .38 + r() * .1, Math.sin(a) * .72, .32 + r() * .08, 1.9); }
+  } else if (shape === 'slender') {
+    for (let k = 0; k < 9; k++) { const y = .12 + r() * .78, a = r() * 6.28, d = (1 - Math.abs(y - .5) * 1.4) * .55 * r(); blob(Math.cos(a) * d, y, Math.sin(a) * d, .26 + r() * .1, 1.2); }
+  } else if (shape === 'shrub') {
+    for (let k = 0; k < 6; k++) { const a = k / 6 * 6.28 + r(), d = k ? .5 : 0; blob(Math.cos(a) * d, .45 + r() * .15, Math.sin(a) * d, .45 + r() * .1, .9); }
+  } else { // feuillu arrondi
+    blob(0, .5, 0, .55);
+    for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28 + r() * .5; blob(Math.cos(a) * .55, .38 + r() * .22, Math.sin(a) * .55, .36 + r() * .1); }
+    for (let k = 0; k < 3; k++) { const a = k / 3 * 6.28 + r(); blob(Math.cos(a) * .25, .75 + r() * .08, Math.sin(a) * .25, .34 + r() * .06); }
   }
-  const m = mergeGeometries(parts.map(g => g.toNonIndexed())); m.computeVertexNormals(); return m;
-}
-const trunkMats = { bark: new THREE.MeshStandardMaterial({ color: '#5a4332', roughness: 1 }), birch: new THREE.MeshStandardMaterial({ color: '#e6e2d8', roughness: .9 }) };
-const crownMats = new Map();
-function crownMat(hex, r) {
-  const c = new THREE.Color(hex); c.offsetHSL((r() - .5) * .03, (r() - .5) * .08, (r() - .5) * .06);
-  const k = c.getHexString(); if (!crownMats.has(k)) crownMats.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: .85, flatShading: true })); return crownMats.get(k);
-}
-const pickables = [];
-function makeTree(t) {
-  const tr = D.traits(t), r = rnd(t.id), h = tr.height * (.85 + r() * .3), c = tr.crown * (.85 + r() * .3);
-  const g = new THREE.Group(); g.userData.tree = t;
-  const trunkH = { round: .45, conifer: .9, pine: .78, columnar: .25, slender: .6, weeping: .5, shrub: .2 }[tr.shape] * h;
-  const tr0 = .1 + h * .012;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(tr0 * .6, tr0, trunkH, 7).translate(0, trunkH / 2, 0), tr.shape === 'slender' ? trunkMats.birch : trunkMats.bark);
-  trunk.castShadow = true; g.add(trunk);
-  const mat = crownMat(tr.color, r);
-  const add = geo => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; g.add(m); };
-  if (tr.shape === 'conifer') {
-    const tiers = 5, base = h * .12, span = h - base;
-    for (let k = 0; k < tiers; k++) { const f = k / tiers, rr = c * (1 - f * .8), hh = span * .38; add(new THREE.ConeGeometry(rr, hh, 9, 1).translate(0, base + f * span * .82 + hh / 2, 0)); }
-  } else {
-    const dims = { round: [c, h * .32, c, h * .66], pine: [c, h * .16, c, h * .84], columnar: [c, h * .46, c, h * .54], slender: [c, h * .36, c * .9, h * .62], weeping: [c, h * .4, c, h * .5], shrub: [c, h * .5, c, h * .5] }[tr.shape] || [c, h * .32, c, h * .66];
-    const geo = blob(r); geo.scale(dims[0], dims[1], dims[2]); geo.translate(0, dims[3], 0); add(geo);
+  let g = mergeGeometries(parts.map(p => p.index ? p.toNonIndexed() : p));
+  g.computeBoundingBox(); const bb = g.boundingBox, sx = 2 / Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z), sy = 1 / (bb.max.y - bb.min.y);
+  g.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2); g.scale(sx, sy, sx);
+  const base = new THREE.Color(hex), col = new THREE.Color(), p = g.attributes.position, cols = new Float32Array(p.count * 3);
+  for (let v = 0; v < p.count; v += 3) { // une teinte par face pour un rendu facetté
+    const y = (p.getY(v) + p.getY(v + 1) + p.getY(v + 2)) / 3, ov = Math.sqrt((p.getX(v) ** 2 + p.getZ(v) ** 2));
+    const k = (.55 + .6 * Math.pow(y, .8)) * (.9 + .25 * ov) * (.92 + r() * .16);
+    col.copy(base).offsetHSL((r() - .5) * .025, 0, 0).multiplyScalar(k);
+    for (let q = 0; q < 3; q++) cols.set([col.r, col.g, col.b], (v + q) * 3);
   }
-  g.rotation.y = r() * Math.PI * 2;
-  const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .2, p.z);
-  scene.add(g); pickables.push(g);
+  g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); g.computeVertexNormals();
+  return g;
 }
-trees.forEach(makeTree);
+function windMaterial() {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: .88, metalness: 0 });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uTime = U.time;
+    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vec3 wp = vec3(modelMatrix[3]);
+      #ifdef USE_INSTANCING
+        wp += vec3(instanceMatrix[3]);
+      #endif
+      float ph = wp.x * .21 + wp.z * .17;
+      float sw = (sin(uTime * 1.3 + ph) * .6 + sin(uTime * 2.1 + ph * 1.7) * .4) * .03 * transformed.y;
+      transformed.x += sw; transformed.z += sw * .6;`);
+  };
+  return m;
+}
+const crownMat = windMaterial();
+const barkMat = new THREE.MeshStandardMaterial({ color: '#5b4636', roughness: 1 }), birchMat = new THREE.MeshStandardMaterial({ color: '#e8e4da', roughness: .9 });
+const CROWN_BASE = { round: .32, conifer: .06, pine: .6, columnar: .12, slender: .3, weeping: .22, shrub: .04 };
+function trunkGeometry(h, crownBase, rad, shape, r) {
+  const parts = [new THREE.CylinderGeometry(rad * .55, rad, crownBase + (h - crownBase) * .45, 8).translate(0, (crownBase + (h - crownBase) * .45) / 2, 0)];
+  if (shape === 'round' || shape === 'pine' || shape === 'weeping') for (let k = 0; k < 3; k++) {
+    const len = (h - crownBase) * .45, b = new THREE.CylinderGeometry(rad * .2, rad * .4, len, 6).translate(0, len / 2, 0);
+    b.rotateZ(.7 + r() * .3); b.rotateY(k * 2.1 + r()); b.translate(0, crownBase * .95, 0); parts.push(b);
+  }
+  return mergeGeometries(parts.map(p => p.index ? p.toNonIndexed() : p));
+}
+
+// Mesure LiDAR de chaque arbre relevé
+const lidarTops = [];
+const surveyed = trees.map(t => {
+  const tr = D.traits(t), m = lidar.chm ? lidar.crownAt(t.lat, t.lon, clamp(t.corrected ? 2.5 : (t.acc || 4), 2.5, 5)) : null;
+  let h = tr.height, rad = tr.crown, measured = false;
+  if (+t.height > 0) h = +t.height;
+  else if (m && m.height > 2) { h = m.height; rad = clamp(m.radius, 1, 14); measured = true; lidarTops.push(m); }
+  return { t, tr, h, rad, measured };
+});
+const pickables = [], labelled = [];
+const trunkBox = new THREE.Group(); scene.add(trunkBox);
+for (const s of surveyed) {
+  const { t, tr } = s, r = rndOf(t.id), shape = tr.shape;
+  const h = s.h, cb = h * CROWN_BASE[shape], ch = h - cb;
+  const g = new THREE.Group(); g.userData.s = s;
+  const crown = new THREE.Mesh(crownGeometry(shape, t.id, tr.color), crownMat);
+  crown.scale.set(s.rad, ch, s.rad); crown.position.y = cb; crown.castShadow = true; g.add(crown);
+  const trunk = new THREE.Mesh(trunkGeometry(h, cb, clamp(.08 + h * .014, .1, .7), shape, r), shape === 'slender' ? birchMat : barkMat); trunk.castShadow = true; g.add(trunk);
+  const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); g.rotation.y = r() * 6.28;
+  scene.add(g); pickables.push(g); labelled.push({ s, pos: new THREE.Vector3(p.x, g.position.y + h + .8, p.z) });
+}
+
+// Arbres non recensés, détectés dans le LiDAR (instanciés)
+progress('Détection des autres arbres…', .82);
+const others = new THREE.Group(); scene.add(others);
+let nOthers = 0;
+if (lidar.chm) {
+  const dLat = 1.5 / mLat;
+  const detected = lidar.detectTrees({
+    minHeight: 3,
+    exclude: (la, lo) => { if (Math.abs(la - lat0) * mLat > S || Math.abs(lo - lon0) * mLon > S) return true; if (inBuildings(la, lo, buildings, dLat)) return true;
+      return trees.some(t => Math.hypot((t.lat - la) * mLat, (t.lon - lo) * mLon) < 3) || lidarTops.some(m => Math.hypot((m.lat - la) * mLat, (m.lon - lo) * mLon) < Math.max(2.5, m.radius * .6)); },
+    max: isTouch ? 1200 : 2500,
+  });
+  nOthers = detected.length;
+  const VAR = 4, groups = { round: [], conifer: [] };
+  for (const d of detected) (d.radius / d.height < .2 && d.height > 8 ? groups.conifer : groups.round).push(d);
+  const dummy = new THREE.Object3D(), c = new THREE.Color();
+  const trunkTpl = new THREE.CylinderGeometry(.55, 1, 1, 7).translate(0, .5, 0);
+  const trunkI = new THREE.InstancedMesh(trunkTpl, barkMat, detected.length); trunkI.castShadow = true; let ti = 0;
+  for (const shape of ['round', 'conifer']) {
+    const list = groups[shape];
+    for (let v = 0; v < VAR; v++) {
+      const sub = list.filter((_, k) => k % VAR === v); if (!sub.length) continue;
+      const geo = crownGeometry(shape, `var${shape}${v}`, '#ffffff', 1);
+      const im = new THREE.InstancedMesh(geo, crownMat, sub.length); im.castShadow = true;
+      sub.forEach((d, k) => {
+        const p = toLocal(d.lat, d.lon), g0 = groundAt(p.x, p.z) - .15, cb = d.height * (shape === 'conifer' ? .08 : .32), rad = clamp(d.radius, 1, 12);
+        const r = rndOf(`${d.lat}${d.lon}`);
+        dummy.position.set(p.x, g0 + cb, p.z); dummy.rotation.set(0, r() * 6.28, 0); dummy.scale.set(rad, d.height - cb, rad); dummy.updateMatrix(); im.setMatrixAt(k, dummy.matrix);
+        c.set(shape === 'conifer' ? '#2f5230' : '#557d3c').offsetHSL((r() - .5) * .04, (r() - .5) * .1, (r() - .5) * .06); im.setColorAt(k, c);
+        const tr = clamp(.08 + d.height * .014, .1, .6); dummy.position.set(p.x, g0, p.z); dummy.scale.set(tr, cb + (d.height - cb) * .4, tr); dummy.updateMatrix(); trunkI.setMatrixAt(ti++, dummy.matrix);
+      });
+      im.instanceColor.needsUpdate = true; others.add(im);
+    }
+  }
+  trunkI.count = ti; others.add(trunkI);
+}
+const measuredN = surveyed.filter(s => s.measured).length;
+$('#sub').innerHTML = `${trees.length} arbres recensés${lidar.chm ? ` · ${measuredN} mesurés au LiDAR` : ''}${nOthers ? `<br>${nOthers} autres arbres détectés par LiDAR` : ''}`;
+if (lidar.source === 'rgealti') warn('LiDAR HD pas encore disponible ici : hauteurs typiques par espèce.');
 
 // ---------- 6. Contrôles ----------
-const centerY = groundAt(0, 0);
-camera.position.set(-S * .55, centerY + S * .45, S * .75);
+const c0 = groundAt(0, 0);
+camera.position.set(-S * .5, c0 + S * .42, S * .72);
 const orbit = new OrbitControls(camera, renderer.domElement);
-orbit.target.set(0, centerY, 0); orbit.enableDamping = true; orbit.maxPolarAngle = Math.PI * .47; orbit.minDistance = 8; orbit.maxDistance = S * 2.5; orbit.update();
+orbit.target.set(0, c0, 0); orbit.enableDamping = true; orbit.dampingFactor = .08; orbit.maxPolarAngle = Math.PI * .47; orbit.minDistance = 6; orbit.maxDistance = S * 2.6; orbit.update();
 
-let mode = 'orbit', yaw = 0, pitch = 0; const keys = {}; const joy = { x: 0, y: 0 };
-const EYE = 1.7;
+let mode = 'orbit', yaw = 0, pitch = 0; const keys = {}, joy = { x: 0, y: 0 }, EYE = 1.7;
 function setMode(m, init = false) {
   mode = m; $('#m-orbit').classList.toggle('on', m === 'orbit'); $('#m-walk').classList.toggle('on', m === 'walk');
   orbit.enabled = m === 'orbit';
@@ -264,41 +430,55 @@ function setMode(m, init = false) {
     $('#help').textContent = isTouch ? 'Joystick pour avancer, glisse ailleurs pour regarder. Vise un arbre et touche-le pour sa fiche.' : 'Clique pour prendre la souris. ZQSD ou flèches pour marcher, Maj pour courir, Échap pour libérer. Clic sur un arbre pour sa fiche.';
   } else {
     if (document.pointerLockElement) document.exitPointerLock();
-    if (!init) {
-      const d = new THREE.Vector3(); camera.getWorldDirection(d);
-      orbit.target.set(camera.position.x + d.x * 30, groundAt(camera.position.x + d.x * 30, camera.position.z + d.z * 30), camera.position.z + d.z * 30);
-      camera.position.y += 40; orbit.update();
-    }
+    if (!init) { const d = new THREE.Vector3(); camera.getWorldDirection(d); const tx = camera.position.x + d.x * 30, tz = camera.position.z + d.z * 30; orbit.target.set(tx, groundAt(tx, tz), tz); camera.position.y += 40; orbit.update(); }
     $('#help').textContent = isTouch ? 'Un doigt pour tourner, deux pour zoomer et déplacer. Touche un arbre pour sa fiche.' : 'Glisser pour tourner, clic droit pour déplacer, molette pour zoomer. Clic sur un arbre pour sa fiche.';
   }
 }
 $('#m-orbit').onclick = () => setMode('orbit'); $('#m-walk').onclick = () => setMode('walk');
+let showLabels = true;
+$('#t-labels').onclick = e => { showLabels = !showLabels; e.currentTarget.classList.toggle('on', showLabels); };
+$('#t-others').onclick = e => { others.visible = !others.visible; e.currentTarget.classList.toggle('on', others.visible); };
+if (!nOthers) $('#t-others').classList.add('hidden');
 addEventListener('keydown', e => { keys[e.code] = true; }); addEventListener('keyup', e => { keys[e.code] = false; });
-document.addEventListener('mousemove', e => { if (mode === 'walk' && document.pointerLockElement) { yaw -= e.movementX * .0022; pitch = Math.max(-1.3, Math.min(1.3, pitch - e.movementY * .0022)); } });
-
-// Tactile : joystick + regard
+document.addEventListener('mousemove', e => { if (mode === 'walk' && document.pointerLockElement) { yaw -= e.movementX * .0022; pitch = clamp(pitch - e.movementY * .0022, -1.3, 1.3); } });
 const joyEl = $('#joy'), knob = joyEl.firstElementChild; let joyId = null, lookId = null, lx = 0, ly = 0;
 renderer.domElement.addEventListener('touchstart', e => { if (mode !== 'walk') return; for (const t of e.changedTouches) if (lookId === null) { lookId = t.identifier; lx = t.clientX; ly = t.clientY; } }, { passive: true });
-renderer.domElement.addEventListener('touchmove', e => { if (mode !== 'walk') return; for (const t of e.changedTouches) if (t.identifier === lookId) { yaw -= (t.clientX - lx) * .005; pitch = Math.max(-1.3, Math.min(1.3, pitch - (t.clientY - ly) * .005)); lx = t.clientX; ly = t.clientY; } }, { passive: true });
+renderer.domElement.addEventListener('touchmove', e => { if (mode !== 'walk') return; for (const t of e.changedTouches) if (t.identifier === lookId) { yaw -= (t.clientX - lx) * .005; pitch = clamp(pitch - (t.clientY - ly) * .005, -1.3, 1.3); lx = t.clientX; ly = t.clientY; } }, { passive: true });
 renderer.domElement.addEventListener('touchend', e => { for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null; });
 joyEl.addEventListener('touchstart', e => { e.preventDefault(); joyId = e.changedTouches[0].identifier; }, { passive: false });
-joyEl.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joyId) { const r = joyEl.getBoundingClientRect(); let dx = (t.clientX - r.left - r.width / 2) / (r.width / 2), dy = (t.clientY - r.top - r.height / 2) / (r.height / 2); const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } joy.x = dx; joy.y = dy; knob.style.transform = `translate(${dx * 34}px, ${dy * 34}px)`; } }, { passive: false });
+joyEl.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === joyId) { const r = joyEl.getBoundingClientRect(); let dx = (t.clientX - r.left - r.width / 2) / (r.width / 2), dy = (t.clientY - r.top - r.height / 2) / (r.height / 2); const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } joy.x = dx; joy.y = dy; knob.style.transform = `translate(${dx * 35}px, ${dy * 35}px)`; } }, { passive: false });
 joyEl.addEventListener('touchend', () => { joyId = null; joy.x = joy.y = 0; knob.style.transform = ''; });
 
-// ---------- 7. Sélection d'arbre ----------
+// ---------- 7. Étiquettes, sélection, fiche ----------
+const labelsEl = $('#labels');
+for (const L of labelled) { const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = `<i style="background:${D.colorFor(L.s.t.species.sci || D.name(L.s.t))}"></i>${esc(D.name(L.s.t))}`; labelsEl.appendChild(el); L.el = el; }
+const v3 = new THREE.Vector3();
+function updateLabels() {
+  const maxD = mode === 'walk' ? 45 : Math.min(260, orbit.getDistance() * 1.25), placed = [];
+  const list = labelled.map(L => ({ L, d: camera.position.distanceTo(L.pos) })).sort((a, b) => a.d - b.d);
+  for (const { L, d } of list) {
+    let show = showLabels && d < maxD;
+    if (show) { v3.copy(L.pos).project(camera); show = v3.z < 1 && Math.abs(v3.x) < 1.05 && Math.abs(v3.y) < 1.05; }
+    if (show) {
+      const x = (v3.x + 1) / 2 * innerWidth, y = (1 - v3.y) / 2 * innerHeight;
+      if (placed.some(p => Math.abs(p[0] - x) < 90 && Math.abs(p[1] - y) < 22)) show = false; else { placed.push([x, y]); L.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`; }
+    }
+    L.el.style.display = show ? '' : 'none';
+  }
+}
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 function pick(cx, cy) {
   if (cx == null) ndc.set(0, 0); else ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObjects(pickables, true)[0]; if (!hit) return null;
-  let o = hit.object; while (o && !o.userData.tree) o = o.parent; return o ? { tree: o.userData.tree, dist: hit.distance } : null;
+  let o = hit.object; while (o && !o.userData.s) o = o.parent; return o ? { s: o.userData.s, dist: hit.distance } : null;
 }
-function showCard(t) {
-  const tr = D.traits(t);
+function showCard(s) {
+  const t = s.t;
   $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
-  const rows = [['Hauteur type', `${Math.round(tr.height)} m`], ['Relevé', new Date(t.date).toLocaleDateString('fr-FR')]];
-  if (t.species.score != null) rows.push(['Confiance', `${Math.round(t.species.score * 100)} %`]); if (t.note) rows.push(['Note', t.note]);
-  $('#card-dl').innerHTML = rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('');
+  const rows = [['Hauteur', `${Math.round(s.h)} m<span class="badge">${s.measured ? 'mesurée LiDAR' : 'typique'}</span>`], ['Couronne', `${Math.round(s.rad * 2)} m de large`], ['Relevé', esc(new Date(t.date).toLocaleDateString('fr-FR'))]];
+  if (t.species.score != null) rows.push(['Confiance', `${Math.round(t.species.score * 100)} %`]); if (t.note) rows.push(['Note', esc(t.note)]);
+  $('#card-dl').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
   const ph = $('#card-ph'); ph.innerHTML = '';
   for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (u) { const img = new Image(); img.src = u; ph.appendChild(img); } });
   $('#card').classList.remove('hidden');
@@ -310,34 +490,33 @@ renderer.domElement.addEventListener('pointerup', e => {
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
   if (mode === 'walk' && !isTouch && !document.pointerLockElement) { renderer.domElement.requestPointerLock(); return; }
   const p = mode === 'walk' ? pick() : pick(e.clientX, e.clientY);
-  if (p && (mode === 'orbit' || p.dist < 40)) showCard(p.tree);
+  if (p && (mode === 'orbit' || p.dist < 45)) showCard(p.s);
 });
 const tip = $('#tip');
 renderer.domElement.addEventListener('mousemove', e => {
   if (mode !== 'orbit' || isTouch) return;
   const p = pick(e.clientX, e.clientY);
-  if (p) { tip.textContent = D.name(p.tree); tip.style.left = e.clientX + 'px'; tip.style.top = e.clientY + 'px'; tip.classList.remove('hidden'); renderer.domElement.style.cursor = 'pointer'; }
+  if (p) { tip.textContent = `${D.name(p.s.t)} · ${Math.round(p.s.h)} m`; tip.style.left = e.clientX + 'px'; tip.style.top = e.clientY + 'px'; tip.classList.remove('hidden'); renderer.domElement.style.cursor = 'pointer'; }
   else { tip.classList.add('hidden'); renderer.domElement.style.cursor = ''; }
 });
 
 // ---------- 8. Boucle ----------
-const clock = new THREE.Clock();
-let frame = 0;
+const clock = new THREE.Clock(); let frame = 0;
 function loop() {
-  const dt = Math.min(.05, clock.getDelta());
+  const dt = Math.min(.05, clock.getDelta()); U.time.value += dt;
   if (mode === 'orbit') orbit.update();
   else {
     const run = keys.ShiftLeft || keys.ShiftRight ? 9 : 3.5;
-    let f = (keys.KeyW || keys.KeyZ || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y;
-    let s = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.KeyQ || keys.ArrowLeft ? 1 : 0) + joy.x;
+    const f = (keys.KeyW || keys.KeyZ || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y;
+    const s = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.KeyQ || keys.ArrowLeft ? 1 : 0) + joy.x;
     const sp = run * dt * (isTouch ? 1.6 : 1);
-    camera.position.x += (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp;
-    camera.position.z += (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
-    camera.position.x = Math.max(-S, Math.min(S, camera.position.x)); camera.position.z = Math.max(-S, Math.min(S, camera.position.z));
+    camera.position.x = clamp(camera.position.x + (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp, -S, S);
+    camera.position.z = clamp(camera.position.z + (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp, -S, S);
     const target = groundAt(camera.position.x, camera.position.z) + EYE; camera.position.y += (target - camera.position.y) * Math.min(1, dt * 10);
     camera.rotation.set(pitch, yaw, 0, 'YXZ');
-    if (++frame % 6 === 0) { const p = pick(); if (p && p.dist < 40) { tip.textContent = `${D.name(p.tree)} · ${Math.round(p.dist)} m`; tip.style.left = '50%'; tip.style.top = '50%'; tip.classList.remove('hidden'); } else tip.classList.add('hidden'); }
+    if (++frame % 6 === 0) { const p = pick(); if (p && p.dist < 45) { tip.textContent = `${D.name(p.s.t)} · ${Math.round(p.dist)} m`; tip.style.left = '50%'; tip.style.top = '50%'; tip.classList.remove('hidden'); } else tip.classList.add('hidden'); }
   }
+  updateLabels();
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
@@ -345,6 +524,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 setMode('orbit', true);
 progress('Prêt', 1); $('#loading').classList.add('hidden');
 loop();
+} catch (e) {
+  console.error(e); progress('Erreur : ' + e.message);
+}
 </script>
 </body>
 </html>
