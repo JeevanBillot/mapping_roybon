@@ -89,8 +89,11 @@
 
 <!-- ===== RÉGLAGES ===== -->
 <section id="view-settings" class="view">
-  <label>Clé API Pl@ntNet
-    <input id="api-key" type="password" placeholder="Clé de my.plantnet.org">
+  <label>URL du relais Pl@ntNet (Cloudflare Worker)
+    <input id="proxy-url" type="text" placeholder="https://xxx.workers.dev">
+  </label>
+  <label>Mot de passe du relais (si défini)
+    <input id="app-token" type="password" placeholder="facultatif">
   </label>
   <label>Durée de moyenne GPS (s)
     <input id="gps-seconds" type="number" min="5" max="60" value="15">

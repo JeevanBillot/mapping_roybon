@@ -1,4 +1,4 @@
-const CACHE = 'arbres-v2';
+const CACHE = 'arbres-v3';
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './manifest.json', './icon.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
@@ -14,7 +14,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  if (url.hostname.includes('plantnet')) return;
+  if (url.hostname.includes('plantnet') || url.hostname.endsWith('workers.dev')) return;
   // Map tiles: network first, cache fallback
   if (url.hostname === 'data.geopf.fr') {
     e.respondWith(fetch(e.request).then(r => { const cp = r.clone(); caches.open('tiles').then(c => c.put(e.request, cp)); return r; }).catch(() => caches.match(e.request)));

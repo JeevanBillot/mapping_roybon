@@ -31,8 +31,10 @@ const del = (store, k) => tx(store, 'readwrite', s => s.delete(k));
 
 // ---------- Settings ----------
 const settings = {
-  get apiKey() { return localStorage.getItem('apiKey') || ''; },
-  set apiKey(v) { localStorage.setItem('apiKey', v); },
+  get proxyUrl() { return (localStorage.getItem('proxyUrl') || '').replace(/\/+$/, ''); },
+  set proxyUrl(v) { localStorage.setItem('proxyUrl', v); },
+  get appToken() { return localStorage.getItem('appToken') || ''; },
+  set appToken(v) { localStorage.setItem('appToken', v); },
   get gpsSeconds() { return +(localStorage.getItem('gpsSeconds') || 15); },
   set gpsSeconds(v) { localStorage.setItem('gpsSeconds', v); },
 };
@@ -130,7 +132,7 @@ $$('.photo-slot input').forEach(inp => inp.addEventListener('change', async () =
 const ORGAN_MAP = { leaf: 'leaf', bark: 'bark', habit: 'habit', fruit: 'fruit' };
 $('#btn-identify').addEventListener('click', identify);
 async function identify() {
-  if (!settings.apiKey) { toast('Renseigne la clé API dans ⚙'); return switchView('settings'); }
+  if (!settings.proxyUrl) { toast('Renseigne l\'URL du relais dans ⚙'); return switchView('settings'); }
   const organs = Object.keys(current.photos);
   if (!organs.length) return toast('Ajoute au moins une photo');
   const fd = new FormData();
@@ -138,12 +140,13 @@ async function identify() {
   const st = $('#id-status'); show(st); st.textContent = 'Identification en cours…';
   $('#btn-identify').disabled = true; $('#results').innerHTML = '';
   try {
-    const url = `https://my-api.plantnet.org/v2/identify/all?api-key=${encodeURIComponent(settings.apiKey)}&lang=fr&nb-results=5&include-related-images=true`;
-    const r = await fetch(url, { method: 'POST', body: fd });
+    const url = `${settings.proxyUrl}?lang=fr&nb-results=5&include-related-images=true`;
+    const headers = settings.appToken ? { 'X-App-Token': settings.appToken } : {};
+    const r = await fetch(url, { method: 'POST', body: fd, headers });
     if (r.status === 404) { st.textContent = 'Aucune espèce reconnue. Ajoute une autre photo (feuille de préférence) ou saisis à la main.'; return; }
     if (!r.ok) {
       let msg = ''; try { const j = await r.json(); msg = j.message || j.error || JSON.stringify(j); } catch (e) { msg = await r.text().catch(() => ''); }
-      st.textContent = `Erreur API ${r.status}${msg ? ' : ' + msg : ''}` + (r.status === 401 || r.status === 403 ? ' — vérifie la clé dans ⚙ (my.plantnet.org, onglet Settings, "API key")' : r.status === 429 ? ' — quota du jour dépassé' : '');
+      st.textContent = `Erreur API ${r.status}${msg ? ' : ' + msg : ''}` + (r.status === 401 || r.status === 403 ? ' — vérifie le relais et son mot de passe dans ⚙' : r.status === 429 ? ' — quota du jour dépassé' : '');
       return;
     }
     const data = await r.json();
@@ -274,7 +277,8 @@ $('#btn-export').addEventListener('click', async () => {
 
 // ---------- Réglages ----------
 $('#btn-save-settings').addEventListener('click', () => {
-  settings.apiKey = $('#api-key').value.trim();
+  settings.proxyUrl = $('#proxy-url').value.trim();
+  settings.appToken = $('#app-token').value.trim();
   settings.gpsSeconds = +$('#gps-seconds').value || 15;
   toast('Réglages enregistrés'); switchView('capture');
 });
@@ -287,8 +291,8 @@ $('#btn-wipe').addEventListener('click', async () => {
 // ---------- Init ----------
 (async () => {
   await openDB();
-  $('#api-key').value = settings.apiKey; $('#gps-seconds').value = settings.gpsSeconds;
+  $('#proxy-url').value = settings.proxyUrl; $('#app-token').value = settings.appToken; $('#gps-seconds').value = settings.gpsSeconds;
   updateCount(); resetCapture();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-  if (!settings.apiKey) toast('Commence par saisir ta clé Pl@ntNet dans ⚙', 4000);
+  if (!settings.proxyUrl) toast('Commence par saisir l\'URL du relais dans ⚙', 4000);
 })();
