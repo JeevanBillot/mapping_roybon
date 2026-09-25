@@ -1,4 +1,4 @@
-const CACHE = 'arbres-v4';
+const CACHE = 'arbres-v5';
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './manifest.json', './icon.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',

@@ -26,6 +26,7 @@ const settings = {
 };
 
 // ---------- Helpers ----------
+const ico = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const haptic = () => navigator.vibrate && navigator.vibrate(25);
 function toast(msg, ms = 2500) { const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.add('hidden'), ms); }
@@ -170,7 +171,7 @@ function renderResults(results) {
     const img = x.images && x.images[0] && x.images[0].url ? x.images[0].url.s : '';
     const common = (x.species.commonNames || [])[0] || '', sci = x.species.scientificNameWithoutAuthor;
     li.style.setProperty('--w', Math.round(x.score * 100) + '%'); if (i === 0 && x.score > .5) li.classList.add('best');
-    li.innerHTML = `<img src="${esc(img)}" alt=""><div class="name"><b>${esc(common || sci)}</b><i>${esc(sci)}</i></div><div class="score">${Math.round(x.score * 100)} %</div>`;
+    li.innerHTML = `${img ? `<img src="${esc(img)}" alt="">` : `<div class="ph">${ico('tree')}</div>`}<div class="name"><b>${esc(common || sci)}</b><i>${esc(sci)}</i></div><div class="score">${Math.round(x.score * 100)} %</div>`;
     li.addEventListener('click', () => choose({ common, sci, family: x.species.family && x.species.family.scientificNameWithoutAuthor, score: x.score, source: 'plantnet', refImg: img }));
     ul.appendChild(li);
   });
@@ -194,16 +195,16 @@ $('#btn-save').addEventListener('click', async () => {
   tree.organs = Object.keys(photos); tree.updated = Date.now(); tree.synced = false;
   await put('trees', tree);
   for (const o of tree.organs) await put('photos', { id: `${tree.id}_${o}`, treeId: tree.id, organ: o, blob: photos[o], synced: false });
-  haptic(); toast(`✔ ${speciesName(tree)} enregistré`);
+  haptic(); toast(`${speciesName(tree)} enregistré`);
   resetCapture(); updateCount(); sync();
 });
-async function updateCount() { const trees = await getAll('trees'); $('#count').textContent = trees.length; const n = trees.filter(t => !t.synced).length; $('#sync-text').textContent = settings.proxyUrl ? (n ? `${n} à envoyer` : 'à jour') : 'hors ligne'; $('#sync-icon').textContent = n ? '☁️' : '✅'; }
+async function updateCount() { const trees = await getAll('trees'); $('#count').textContent = trees.length; const n = trees.filter(t => !t.synced).length; $('#sync-text').textContent = settings.proxyUrl ? (n ? `${n} à envoyer` : 'à jour') : 'hors ligne'; $('#sync-icon').innerHTML = ico(!settings.proxyUrl ? 'cloud-off' : n ? 'cloud-up' : 'cloud-ok'); }
 
 // ---------- Synchronisation ----------
 let syncing = false;
 async function sync(full = false) {
   if (!settings.proxyUrl || !navigator.onLine || syncing) return;
-  syncing = true; $('#sync-btn').classList.add('busy');
+  syncing = true; $('#sync-btn').classList.add('busy'); $('#sync-icon').innerHTML = ico('refresh');
   try {
     for (const id of settings.pendingDeletes) { const r = await api(`/sync/tree/${id}`, { method: 'DELETE' }); if (r.ok) settings.pendingDeletes = settings.pendingDeletes.filter(x => x !== id); }
     const photos = await getAll('photos');
@@ -239,7 +240,7 @@ async function renderList() {
   const ul = $('#tree-list'); ul.innerHTML = '';
   for (const t of trees) {
     const li = document.createElement('li'); const pid = firstPhotoId(t);
-    li.innerHTML = `<img class="thumb" src="icon.svg" alt=""><div class="info"><b><span class="dot" style="background:${colorFor(t.species.sci || speciesName(t))};display:inline-block;margin-right:6px"></span>${esc(speciesName(t))}</b><small>${esc(t.species.sci || '')}${t.species.score != null ? ' · ' + Math.round(t.species.score * 100) + ' %' : ''}</small><small>${new Date(t.date).toLocaleDateString('fr-FR')} · ±${(t.acc || 0).toFixed(0)} m${t.corrected ? ' · corrigé' : ''}${t.note ? ' · ' + esc(t.note) : ''}</small>${t.synced ? '' : '<small class="unsynced">⏳ non synchronisé</small>'}</div><button class="del">🗑</button>`;
+    li.innerHTML = `<img class="thumb" src="icon.svg" alt=""><div class="info"><b><span class="dot" style="background:${colorFor(t.species.sci || speciesName(t))};display:inline-block;margin-right:6px"></span>${esc(speciesName(t))}</b><small>${esc(t.species.sci || '')}${t.species.score != null ? ' · ' + Math.round(t.species.score * 100) + ' %' : ''}</small><small>${new Date(t.date).toLocaleDateString('fr-FR')} · ±${(t.acc || 0).toFixed(0)} m${t.corrected ? ' · corrigé' : ''}${t.note ? ' · ' + esc(t.note) : ''}</small>${t.synced ? '' : `<small class="unsynced">${ico('clock')}non synchronisé</small>`}</div><button class="del" aria-label="Supprimer">${ico('trash')}</button>`;
     if (pid) photoSrc(pid).then(u => { if (u) li.querySelector('img').src = u; });
     li.querySelector('img').addEventListener('click', async () => { if (pid) { const u = await photoSrc(pid); if (u) { $('#viewer img').src = u; show($('#viewer')); } } });
     li.querySelector('.del').addEventListener('click', async () => {
@@ -267,7 +268,7 @@ async function renderMap() {
     const me = L.circleMarker([0, 0], { radius: 7, color: '#fff', fillColor: '#1e6bff', fillOpacity: 1, weight: 2 });
     map.on('locationfound', e => { me.setLatLng(e.latlng).addTo(map); });
     map.locate({ watch: true, enableHighAccuracy: true, setView: false });
-    const Loc = L.Control.extend({ onAdd() { const b = L.DomUtil.create('button', 'leaflet-bar'); b.textContent = '📍'; b.style.cssText = 'width:34px;height:34px;padding:0;margin:0;background:#fff;font-size:18px'; b.onclick = () => { if (me._map) map.setView(me.getLatLng(), 19); else toast('Position en attente…'); }; return b; } });
+    const Loc = L.Control.extend({ onAdd() { const b = L.DomUtil.create('button', 'leaflet-bar'); b.innerHTML = ico('locate'); b.className += ' loc-btn'; b.onclick = () => { if (me._map) map.setView(me.getLatLng(), 19); else toast('Position en attente…'); }; return b; } });
     new Loc({ position: 'topleft' }).addTo(map);
   }
   layer.clearLayers();
