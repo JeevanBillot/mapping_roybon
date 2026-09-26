@@ -19,9 +19,7 @@ PWA à installer sur le téléphone. GPS moyenné + photos + identification Pl@n
 
 **Sur le téléphone** : ouvrir l'URL Pages → « Ajouter à l'écran d'accueil » → ⚙ → coller l'URL du Worker et le mot de passe.
 
-**Par arbre** : téléphone à bout de bras à côté du tronc, écran vers le ciel → « Je suis à l'arbre » (20 s) → glisser le point sur le houppier dans la photo aérienne → photos feuille / écorce / silhouette (identification automatique) → choisir → Enregistrer.
-
-**Précision** : le GPS seul donne 3 à 10 m. La correction sur orthophoto IGN (20 cm/pixel) ramène à moins d'1 m. Les points restent déplaçables dans l'onglet Carte.
+**Par arbre** : le GPS est allumé dès l'ouverture de l'app et sa précision s'affiche en direct. « Je suis à l'arbre » prend la position immédiatement si elle atteint la précision visée (5 m par défaut), sinon attend au plus 10 s (réglables). Puis repositionnement sur une mini-carte au choix : photo aérienne, plan IGN, ou arbres LiDAR (sommets de couronnes mesurés par l'IGN, à toucher pour y placer le point). Les arbres déjà relevés y sont affichés. Ensuite photos feuille / écorce / silhouette (identification automatique), choix, enregistrement.
 
 **Export** : onglet Liste → Exporter. Envoyer le ZIP pour l'étape 2.
 

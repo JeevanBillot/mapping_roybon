@@ -31,7 +31,8 @@
 
   <!-- Étape 1 : position -->
   <div id="step-gps" class="step">
-    <div class="card">
+    <div class="card" id="gps-card">
+      <div class="gps-live" id="gps-live"><i class="dot"></i><span id="gps-live-text">GPS en cours d'allumage…</span></div>
       <p class="hint">Tiens le téléphone <b>à bout de bras, à côté du tronc</b>, écran vers le ciel. Le tronc bloque les satellites.</p>
       <button id="btn-gps" class="big primary"><svg class="i"><use href="#i-pin"/></svg>Je suis à l'arbre</button>
       <div id="gps-status" class="hidden">
@@ -42,8 +43,9 @@
     </div>
     <div id="pos-card" class="card hidden">
       <p class="hint small">GPS : <span id="pos-text"></span></p>
+      <div class="seg" id="mini-base"><button data-b="ortho" class="on">Photo</button><button data-b="plan">Plan IGN</button><button data-b="lidar">Arbres LiDAR</button></div>
       <div id="mini-map"></div>
-      <p class="hint small">Glisse le point sur le houppier de l'arbre dans la photo aérienne.</p>
+      <p class="hint small" id="mini-hint">Touche la carte ou glisse le point pour le placer sur le tronc. Les points colorés sont les arbres déjà relevés.</p>
       <button id="btn-pos-ok" class="big primary">Position OK<svg class="i"><use href="#i-arrow-right"/></svg></button>
       <button id="btn-pos-redo" class="link">Refaire le GPS</button>
     </div>
@@ -106,7 +108,8 @@
   <div class="card">
     <label>URL du relais (Cloudflare Worker)<input id="proxy-url" type="url" placeholder="https://xxx.workers.dev"></label>
     <label>Mot de passe du relais<input id="app-token" type="password" placeholder="APP_TOKEN"></label>
-    <label>Durée de moyenne GPS (s)<input id="gps-seconds" type="number" min="5" max="60" value="20"></label>
+    <label>Précision GPS visée (m)<input id="gps-target" type="number" min="2" max="30" value="5"></label>
+    <label>Attente maximum (s)<input id="gps-maxwait" type="number" min="1" max="60" value="10"></label>
     <button id="btn-save-settings" class="primary">Enregistrer</button>
   </div>
   <div class="card">

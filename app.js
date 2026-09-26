@@ -21,7 +21,8 @@ const del = (store, k) => tx(store, 'readwrite', s => s.delete(k));
 const settings = {
   get proxyUrl() { return (localStorage.getItem('proxyUrl') || '').replace(/\/+$/, ''); }, set proxyUrl(v) { localStorage.setItem('proxyUrl', v); },
   get appToken() { return localStorage.getItem('appToken') || ''; }, set appToken(v) { localStorage.setItem('appToken', v); },
-  get gpsSeconds() { return +(localStorage.getItem('gpsSeconds') || 20); }, set gpsSeconds(v) { localStorage.setItem('gpsSeconds', v); },
+  get gpsTarget() { return +(localStorage.getItem('gpsTarget') || 5); }, set gpsTarget(v) { localStorage.setItem('gpsTarget', v); },
+  get gpsMaxWait() { return +(localStorage.getItem('gpsMaxWait') || 10); }, set gpsMaxWait(v) { localStorage.setItem('gpsMaxWait', v); },
   get pendingDeletes() { return JSON.parse(localStorage.getItem('pendingDeletes') || '[]'); }, set pendingDeletes(v) { localStorage.setItem('pendingDeletes', JSON.stringify(v)); },
 };
 
@@ -63,7 +64,7 @@ function setStep(n) { $$('.stepper li').forEach(li => { const s = +li.dataset.st
 let current = null, miniMap = null, miniMarker = null, gpsAbort = null;
 function resetCapture() {
   current = null; setStep(1);
-  show($('#step-gps')); show($('#gps-status'), false); show($('#pos-card'), false); show($('#btn-gps'));
+  show($('#step-gps')); show($('#gps-card')); show($('#gps-status'), false); show($('#pos-card'), false); show($('#btn-gps'));
   show($('#step-photos'), false); show($('#step-save'), false); show($('#btn-cancel'), false);
   $$('.photo-slot').forEach(s => { s.classList.remove('filled'); s.querySelector('img').src = ''; s.querySelector('input').value = ''; });
   $('#results').innerHTML = ''; show($('#manual'), false); show($('#id-status'), false);
@@ -71,55 +72,145 @@ function resetCapture() {
 }
 $('#btn-cancel').addEventListener('click', () => { if (confirm('Abandonner cet arbre ?')) resetCapture(); });
 
-// ---------- Étape 1 : GPS moyenné ----------
+// ---------- GPS permanent : allumé dès l'ouverture de l'app ----------
+const gps = { fixes: [], last: null, wid: null, poll: null };
+const GPS_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 };
+function onFix(p) {
+  const f = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, t: Date.now() };
+  gps.fixes.push(f); gps.fixes = gps.fixes.filter(x => f.t - x.t < 15000); gps.last = f; renderGpsLive();
+}
+function startWatch() {
+  if (!navigator.geolocation || gps.wid != null) return;
+  gps.wid = navigator.geolocation.watchPosition(onFix, err => { gps.err = err; renderGpsLive(); }, GPS_OPTS);
+  // Immobile, le téléphone remonte peu de positions : on en redemande une toutes les 2 s
+  gps.poll = setInterval(() => navigator.geolocation.getCurrentPosition(onFix, () => {}, GPS_OPTS), 2000);
+}
+function stopWatch() { if (gps.wid != null) navigator.geolocation.clearWatch(gps.wid); clearInterval(gps.poll); gps.wid = null; }
+document.addEventListener('visibilitychange', () => document.hidden ? stopWatch() : startWatch());
+setInterval(renderGpsLive, 3000);
+function renderGpsLive() {
+  const el = $('#gps-live'), f = gps.last, fresh = f && Date.now() - f.t < 8000;
+  el.classList.remove('good', 'mid', 'bad');
+  if (!navigator.geolocation) { $('#gps-live-text').textContent = 'GPS indisponible sur cet appareil'; return; }
+  if (gps.err && !fresh) { el.classList.add('bad'); $('#gps-live-text').textContent = gps.err.code === 1 ? 'GPS refusé : autorise la localisation pour ce site' : 'Signal GPS perdu…'; return; }
+  if (!fresh) { $('#gps-live-text').textContent = 'Recherche des satellites…'; return; }
+  const t = settings.gpsTarget;
+  el.classList.add(f.acc <= t ? 'good' : f.acc <= t * 2 ? 'mid' : 'bad');
+  $('#gps-live-text').textContent = `Précision ± ${Math.round(f.acc)} m${f.acc <= t ? ' · prêt' : ' · patiente un peu'}`;
+}
+
+// ---------- Étape 1 : prise de position ----------
 $('#btn-gps').addEventListener('click', startGPS);
-$('#btn-pos-redo').addEventListener('click', () => { show($('#pos-card'), false); show($('#btn-gps')); startGPS(); });
+$('#btn-pos-redo').addEventListener('click', () => { show($('#pos-card'), false); show($('#gps-card')); show($('#btn-gps')); startGPS(); });
 $('#btn-gps-stop').addEventListener('click', () => gpsAbort && gpsAbort());
+function pickFixes(maxAgeMs) {
+  const now = Date.now(), recent = gps.fixes.filter(f => now - f.t < maxAgeMs);
+  if (!recent.length) return [];
+  const best = Math.min(...recent.map(f => f.acc));
+  return recent.filter(f => f.acc <= Math.max(settings.gpsTarget, best * 1.5));
+}
 async function startGPS() {
   if (!navigator.geolocation) return toast('Pas de GPS disponible');
-  haptic();
-  const dur = settings.gpsSeconds * 1000, samples = [], t0 = Date.now();
-  show($('#gps-status')); show($('#btn-gps'), false); show($('#btn-cancel'));
-  $('#gps-ring').style.strokeDashoffset = 100.5; $('#gps-acc').textContent = '—'; $('#gps-text').textContent = 'Recherche des satellites…';
-  await new Promise(resolve => {
-    let done = false;
-    const onPos = p => {
-      if (done) return;
-      samples.push({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude });
-      const el = Date.now() - t0;
-      $('#gps-ring').style.strokeDashoffset = 100.5 * (1 - Math.min(1, el / dur));
-      $('#gps-acc').textContent = `±${p.coords.accuracy.toFixed(0)} m`;
-      $('#gps-text').textContent = `${samples.length} mesures · ${Math.max(0, Math.ceil((dur - el) / 1000))} s`;
-    };
-    const opts = { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 };
-    const wid = navigator.geolocation.watchPosition(onPos, err => toast('Erreur GPS : ' + err.message), opts);
-    const iv = setInterval(() => navigator.geolocation.getCurrentPosition(onPos, () => {}, opts), 1000);
-    const finish = () => { if (done) return; done = true; navigator.geolocation.clearWatch(wid); clearInterval(iv); clearTimeout(to); resolve(); };
-    const to = setTimeout(finish, dur); gpsAbort = finish;
-  });
-  gpsAbort = null;
-  if (!samples.length) { show($('#gps-status'), false); show($('#btn-gps')); return toast('Aucune position reçue'); }
-  const accs = samples.map(s => s.acc).sort((a, b) => a - b), med = accs[Math.floor(accs.length / 2)];
-  const good = samples.filter(s => s.acc <= med * 2);
+  haptic(); startWatch();
+  navigator.geolocation.getCurrentPosition(onFix, () => {}, GPS_OPTS);
+  const target = settings.gpsTarget, maxWait = settings.gpsMaxWait * 1000, t0 = Date.now();
+  let chosen = null;
+  const ready = () => { const f = gps.last; return f && Date.now() - f.t < 3000 && f.acc <= target; };
+  if (!ready()) {
+    show($('#gps-status')); show($('#btn-gps'), false); show($('#btn-cancel'));
+    $('#gps-ring').style.strokeDashoffset = 100.5;
+    chosen = await new Promise(resolve => {
+      const finish = () => { clearInterval(iv); gpsAbort = null; resolve(pickFixes(6000)); };
+      const iv = setInterval(() => {
+        const el = Date.now() - t0, f = gps.last;
+        $('#gps-ring').style.strokeDashoffset = 100.5 * (1 - Math.min(1, el / maxWait));
+        $('#gps-acc').textContent = f ? `±${Math.round(f.acc)} m` : '—';
+        $('#gps-text').textContent = f ? `Objectif ± ${target} m · ${Math.max(0, Math.ceil((maxWait - el) / 1000))} s max` : 'Recherche des satellites…';
+        if (ready() || el >= maxWait) finish();
+      }, 200);
+      gpsAbort = finish;
+    });
+  } else chosen = pickFixes(3000);
+  if (!chosen.length) { show($('#gps-status'), false); show($('#btn-gps')); return toast('Aucune position reçue. Vérifie que la localisation est autorisée.'); }
   let W = 0, lat = 0, lon = 0, alt = 0, nAlt = 0;
-  for (const s of good) { const w = 1 / (s.acc * s.acc); W += w; lat += s.lat * w; lon += s.lon * w; if (s.alt != null) { alt += s.alt; nAlt++; } }
+  for (const f of chosen) { const w = 1 / (f.acc * f.acc); W += w; lat += f.lat * w; lon += f.lon * w; if (f.alt != null) { alt += f.alt; nAlt++; } }
   lat /= W; lon /= W;
-  current = { id: Date.now().toString(36), lat, lon, gpsLat: lat, gpsLon: lon, acc: Math.sqrt(1 / W), accMin: accs[0], samples: good.length, alt: nAlt ? alt / nAlt : null, date: new Date().toISOString(), photos: {}, corrected: false };
-  $('#pos-text').textContent = `±${current.acc.toFixed(1)} m (${good.length} mesures)`;
-  show($('#gps-status'), false); show($('#pos-card')); haptic();
+  const acc = Math.min(...chosen.map(f => f.acc));
+  current = { id: Date.now().toString(36), lat, lon, gpsLat: lat, gpsLon: lon, acc, samples: chosen.length, alt: nAlt ? alt / nAlt : null, date: new Date().toISOString(), photos: {}, corrected: false };
+  $('#pos-text').textContent = `± ${acc.toFixed(1)} m${Date.now() - t0 > 400 ? ` · ${((Date.now() - t0) / 1000).toFixed(0)} s` : ''}`;
+  show($('#gps-status'), false); show($('#btn-gps'), false); show($('#gps-card'), false); show($('#btn-cancel')); show($('#pos-card')); haptic();
   showMiniMap();
 }
+
+// ---------- Carte de repositionnement : photo, plan IGN, arbres LiDAR ----------
+let miniBases = null, miniBase = 'ortho', miniTrees = null, miniLidarLayer = null, lidarCache = null, lidarLoading = null;
+function setCurrentPos(ll, how) { current.lat = ll.lat; current.lon = ll.lng; current.corrected = true; if (how) current.snapped = how; miniMarker.setLatLng(ll); haptic(); }
 function showMiniMap() {
   if (!hasLeaflet()) { $('#mini-map').textContent = 'Carte indisponible hors ligne'; return; }
   if (!miniMap) {
-    miniMap = L.map('mini-map', { zoomControl: false, attributionControl: false });
-    L.tileLayer(IGN_ORTHO, { maxZoom: 21, maxNativeZoom: 19 }).addTo(miniMap);
-    miniMarker = L.marker([0, 0], { draggable: true, autoPan: true }).addTo(miniMap);
-    miniMarker.on('dragend', () => { const ll = miniMarker.getLatLng(); current.lat = ll.lat; current.lon = ll.lng; current.corrected = true; haptic(); });
+    miniMap = L.map('mini-map', { zoomControl: false, attributionControl: false, maxZoom: 22 });
+    miniBases = {
+      ortho: L.tileLayer(IGN_ORTHO, { maxZoom: 22, maxNativeZoom: 19 }),
+      plan: L.tileLayer(IGN_PLAN, { maxZoom: 22, maxNativeZoom: 19 }),
+    };
+    miniBases.ortho.addTo(miniMap);
+    miniTrees = L.layerGroup().addTo(miniMap);
+    miniLidarLayer = L.layerGroup();
+    miniMarker = L.marker([0, 0], { draggable: true, autoPan: true, zIndexOffset: 1000, icon: L.divIcon({ className: '', html: '<div class="aim"><i></i></div>', iconSize: [44, 44], iconAnchor: [22, 22] }) }).addTo(miniMap);
+    miniMarker.on('dragend', () => setCurrentPos(miniMarker.getLatLng(), 'manuel'));
+    miniMap.on('click', e => setCurrentPos(e.latlng, 'manuel'));
+    $$('#mini-base button').forEach(b => b.addEventListener('click', () => setMiniBase(b.dataset.b)));
   }
   miniMarker.setLatLng([current.lat, current.lon]);
   miniMap.setView([current.lat, current.lon], 20);
+  drawMiniTrees();
+  if (miniBase === 'lidar') loadMiniLidar();
   setTimeout(() => miniMap.invalidateSize(), 60);
+}
+async function drawMiniTrees() {
+  miniTrees.clearLayers();
+  for (const t of await getAll('trees')) {
+    L.marker([t.lat, t.lon], { interactive: false, icon: L.divIcon({ className: '', html: `<div class="mini-tree" style="background:${colorFor(t.species.sci || speciesName(t))}"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] }) })
+      .bindTooltip(esc(speciesName(t)), { permanent: true, direction: 'right', offset: [6, 0], className: 'mini-lbl' }).addTo(miniTrees);
+  }
+}
+function setMiniBase(b) {
+  miniBase = b;
+  $$('#mini-base button').forEach(x => x.classList.toggle('on', x.dataset.b === b));
+  miniMap.removeLayer(miniBases.ortho); miniMap.removeLayer(miniBases.plan); miniMap.removeLayer(miniLidarLayer);
+  (b === 'plan' ? miniBases.plan : miniBases.ortho).addTo(miniMap);
+  if (b === 'lidar') { miniLidarLayer.addTo(miniMap); loadMiniLidar(); }
+  $('#mini-hint').textContent = b === 'lidar'
+    ? 'Chaque rond blanc est le sommet d\'un arbre mesuré par le LiDAR : touche celui de ton arbre pour y placer le point.'
+    : 'Touche la carte ou glisse le point pour le placer sur le tronc. Les points colorés sont les arbres déjà relevés.';
+}
+async function loadMiniLidar() {
+  const lat = current.lat, lon = current.lon, mLat = 111132, mLon = 111320 * Math.cos(lat * Math.PI / 180);
+  const inside = c => c && lat > c.latMin + 40 / mLat && lat < c.latMax - 40 / mLat && lon > c.lonMin + 40 / mLon && lon < c.lonMax - 40 / mLon;
+  if (!inside(lidarCache)) {
+    if (!navigator.onLine) return toast('Arbres LiDAR : réseau nécessaire');
+    toast('Chargement du LiDAR IGN…', 8000);
+    const H = 150; // zone de 300 m autour de toi, réutilisée pour les arbres voisins
+    const box = { latMin: lat - H / mLat, latMax: lat + H / mLat, lonMin: lon - H / mLon, lonMax: lon + H / mLon };
+    lidarLoading = lidarLoading || (async () => {
+      const Lm = await import('./lidar.js');
+      const li = await Lm.loadLidar(box.latMin, box.lonMin, box.latMax, box.lonMax, 600);
+      if (!li.chm) throw new Error('LiDAR HD pas encore publié ici');
+      const tops = li.detectTrees({ minHeight: 2.5, max: 4000 });
+      return Object.assign(box, { li, tops, img: li.chmCanvas().toDataURL() });
+    })();
+    try { lidarCache = await lidarLoading; } catch (e) { lidarLoading = null; toast('Arbres LiDAR indisponibles : ' + e.message, 4000); return; }
+    lidarLoading = null; $('#toast').classList.add('hidden');
+  }
+  miniLidarLayer.clearLayers();
+  L.imageOverlay(lidarCache.img, lidarCache.li.boundsLatLon, { opacity: .75 }).addTo(miniLidarLayer);
+  for (const t of lidarCache.tops) {
+    L.polygon(t.outline, { color: '#fff', weight: 1, fill: false, opacity: .8, interactive: false }).addTo(miniLidarLayer);
+    L.marker([t.lat, t.lon], { icon: L.divIcon({ className: '', html: '<div class="mini-top"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }) })
+      .bindTooltip(`${Math.round(t.height)} m`, { direction: 'top', offset: [0, -8] })
+      .on('click', e => { L.DomEvent.stopPropagation(e); setCurrentPos(L.latLng(t.lat, t.lon), 'lidar'); current.lidarHeight = Math.round(t.height * 10) / 10; toast(`Placé sur le sommet LiDAR · ${Math.round(t.height)} m`); })
+      .addTo(miniLidarLayer);
+  }
 }
 $('#btn-pos-ok').addEventListener('click', () => { haptic(); show($('#step-gps'), false); show($('#step-photos')); setStep(2); });
 
@@ -301,14 +392,14 @@ $('#btn-export').addEventListener('click', async () => {
 });
 
 // ---------- Réglages ----------
-$('#btn-save-settings').addEventListener('click', () => { settings.proxyUrl = $('#proxy-url').value.trim(); settings.appToken = $('#app-token').value.trim(); settings.gpsSeconds = +$('#gps-seconds').value || 20; toast('Réglages enregistrés'); switchView('capture'); sync(true); });
+$('#btn-save-settings').addEventListener('click', () => { settings.proxyUrl = $('#proxy-url').value.trim(); settings.appToken = $('#app-token').value.trim(); settings.gpsTarget = +$('#gps-target').value || 5; settings.gpsMaxWait = +$('#gps-maxwait').value || 10; renderGpsLive(); toast('Réglages enregistrés'); switchView('capture'); sync(true); });
 $('#btn-wipe').addEventListener('click', async () => { if (!confirm('Effacer les données de ce téléphone ? Le cloud n\'est pas touché.')) return; await tx('trees', 'readwrite', s => s.clear()); await tx('photos', 'readwrite', s => s.clear()); updateCount(); toast('Données locales effacées'); });
 
 // ---------- Init ----------
 (async () => {
   await openDB();
-  $('#proxy-url').value = settings.proxyUrl; $('#app-token').value = settings.appToken; $('#gps-seconds').value = settings.gpsSeconds;
-  updateCount(); resetCapture();
+  $('#proxy-url').value = settings.proxyUrl; $('#app-token').value = settings.appToken; $('#gps-target').value = settings.gpsTarget; $('#gps-maxwait').value = settings.gpsMaxWait;
+  updateCount(); resetCapture(); startWatch(); renderGpsLive();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   if (!settings.proxyUrl) { toast('Commence par les Réglages : URL du relais et mot de passe', 4000); } else sync();
 })();
