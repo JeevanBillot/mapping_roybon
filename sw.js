@@ -2,9 +2,9 @@
    - Fichiers de l'app : réseau d'abord (toujours la dernière version), cache si pas de réseau.
    - Bibliothèques versionnées (CDN) : cache d'abord.
    - Tuiles de carte IGN : réseau d'abord, cache pour le terrain sans réseau. */
-const VERSION = 'v18';
+const VERSION = 'v19';
 const APP = 'app-' + VERSION, LIBS = 'libs', TILES = 'tiles';
-const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg', './data.js', './lidar.js', './plan.html', './3d.html'];
+const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg', './data.js', './lidar.js', './house.js', './plan.html', './3d.html'];
 const CDN = [
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',

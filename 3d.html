@@ -122,7 +122,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadLidar, fetchBuildings, fetchWater, fetchSports, inBuildings, merc } from './lidar.js';
+import { loadLidar, fetchBuildings, fetchWater, fetchSports, inBuildings, inPolygon, merc } from './lidar.js';
+import { facadeTexture, buildTerrace, buildEave, BAY, FACADE_H } from './house.js';
 
 const D = window.RoybonData, $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -617,7 +618,22 @@ let nRoofLidar = 0;
     const half = Math.max(...ring.map(p => Math.abs((p.x - cx) * nx + (p.z - cz) * nz))) || 1;
     return (x, z) => eave + (ridge - eave) * Math.max(0, 1 - Math.abs((x - cx) * nx + (z - cz) * nz) / half);
   }
-  for (const b of buildings) {
+  // Maison principale : désignée sur le plan 2D, sinon le grand bâtiment le plus proche des arbres relevés
+  let houseIdx = -1;
+  const houseFeat = features.find(f => f.type === 'house');
+  if (houseFeat) houseIdx = buildings.findIndex(b => inPolygon(houseFeat.lat, houseFeat.lon, b.rings[0]));
+  if (houseIdx < 0 && trees.length) {
+    const tl = trees.reduce((a, t) => [a[0] + t.lat / trees.length, a[1] + t.lon / trees.length], [0, 0]); let best = Infinity;
+    buildings.forEach((b, i) => {
+      const r = b.rings[0], c = r.reduce((a, p) => [a[0] + p[0] / r.length, a[1] + p[1] / r.length], [0, 0]);
+      let area = 0; for (let k = 0; k < r.length - 1; k++) area += ((r[k][1] * r[k + 1][0]) - (r[k + 1][1] * r[k][0])) * mLat * mLon / 2;
+      if (Math.abs(area) < 80 || (b.height && b.height < 6)) return;
+      const dist = Math.hypot((c[0] - tl[0]) * mLat, (c[1] - tl[1]) * mLon); if (dist < best) { best = dist; houseIdx = i; }
+    });
+  }
+  const houseMat = new THREE.MeshStandardMaterial({ map: facadeTexture(renderer), roughness: .92, side: THREE.DoubleSide });
+  for (const [bi, b] of buildings.entries()) {
+    const isHouse = bi === houseIdx;
     let ring = b.rings[0].map(([la, lo]) => toLocal(la, lo));
     if (ring.length > 1 && Math.hypot(ring[0].x - ring.at(-1).x, ring[0].z - ring.at(-1).z) < 1e-3) ring = ring.slice(0, -1);
     if (ring.length < 3 || ring.every(p => Math.abs(p.x) > S || Math.abs(p.z) > S)) continue;
@@ -641,17 +657,51 @@ let nRoofLidar = 0;
     rg.setAttribute('uv', new THREE.BufferAttribute(ruv, 2));
     const roof = new THREE.Mesh(rg, roofMat); roof.castShadow = roof.receiveShadow = true; scene.add(roof);
     // Murs : chaque côté découpé tous les mètres et monté jusqu'au toit (pignons compris)
-    const wp = [], yb = g0 - .4;
-    for (const r of [ring, ...holes]) for (let e = 0; e < r.length; e++) {
-      const a = r[e], c = r[(e + 1) % r.length], n = Math.max(1, Math.ceil(Math.hypot(c.x - a.x, c.z - a.z)));
+    const wp = [], wuv = [], yb = g0 - .4, facades = [];
+    for (const [ri, r] of [ring, ...holes].entries()) for (let e = 0; e < r.length; e++) {
+      const a = r[e], c = r[(e + 1) % r.length], len = Math.hypot(c.x - a.x, c.z - a.z), n = Math.max(1, Math.ceil(len));
+      const off = len >= BAY ? (len % BAY) / 2 : (len - BAY) / 2;                                // travées centrées sur le mur
+      const plain = len < 2.4;                                                                    // petit retour de mur : enduit seul
       for (let k = 0; k < n; k++) {
         const p = { x: a.x + (c.x - a.x) * k / n, z: a.z + (c.z - a.z) * k / n }, q = { x: a.x + (c.x - a.x) * (k + 1) / n, z: a.z + (c.z - a.z) * (k + 1) / n };
         const hp = roofAt(p.x, p.z), hq = roofAt(q.x, q.z);
         wp.push(p.x, yb, p.z, q.x, yb, q.z, q.x, hq, q.z, p.x, yb, p.z, q.x, hq, q.z, p.x, hp, p.z);
+        if (isHouse) {
+          const up = s2 => plain ? .05 : (s2 - off) / BAY, u0 = up(len * k / n), u1 = up(len * (k + 1) / n), v = y => clamp((y - g0) / FACADE_H, 0, .999);
+          wuv.push(u0, v(yb), u1, v(yb), u1, v(hq), u0, v(yb), u1, v(hq), u0, v(hp));
+        }
+      }
+      if (isHouse && ri === 0) facades.push({ a, c, len, off });
+    }
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); if (isHouse) wg.setAttribute('uv', new THREE.Float32BufferAttribute(wuv, 2)); wg.computeVertexNormals();
+    const walls = new THREE.Mesh(wg, isHouse ? houseMat : wallMat); walls.castShadow = walls.receiveShadow = true; scene.add(walls);
+    // Avant-toits de la maison sur les murs gouttereaux (hauteur de toit constante le long du mur)
+    if (isHouse) for (const f of facades) {
+      if (f.len < 2) continue;
+      const ha = roofAt(f.a.x, f.a.z), hc = roofAt(f.c.x, f.c.z), hm = roofAt((f.a.x + f.c.x) / 2, (f.a.z + f.c.z) / 2);
+      if (hm - (ha + hc) / 2 > .8 || Math.abs(ha - hc) > Math.max(1.2, f.len * .1)) continue;              // pignon : pas d'avant-toit
+      const dx = (f.c.x - f.a.x) / f.len, dz = (f.c.z - f.a.z) / f.len, mx = (f.a.x + f.c.x) / 2, mz = (f.a.z + f.c.z) / 2;
+      let nx = -dz, nz = dx; if (pip(mx + nx * .6, mz + nz * .6, ring)) { nx = -nx; nz = -nz; }
+      scene.add(buildEave(f.a, f.c, { x: nx, z: nz }, ha - .08, hc - .08));
+    }
+    // Terrasse sur la façade la mieux orientée au sud
+    if (isHouse) {
+      let best = null;
+      for (const f of facades) {
+        if (f.len < BAY * 5) continue;
+        const dx = (f.c.x - f.a.x) / f.len, dz = (f.c.z - f.a.z) / f.len, mx = (f.a.x + f.c.x) / 2, mz = (f.a.z + f.c.z) / 2;
+        let nx = -dz, nz = dx; if (pip(mx + nx * .6, mz + nz * .6, ring)) { nx = -nx; nz = -nz; }            // normale vers l'extérieur
+        const score = nz * f.len; if (nz > .5 && (!best || score > best.score)) best = { f, nx, nz, score };
+      }
+      if (best) {
+        let { a: A, c: C } = best.f; const n = { x: best.nx, z: best.nz };
+        let d = { x: (C.x - A.x) / best.f.len, z: (C.z - A.z) / best.f.len };
+        if (n.x * -d.z + n.z * d.x < 0) { [A, C] = [C, A]; d = { x: -d.x, z: -d.z }; }                    // x le long du mur, gauche → droite vu du jardin
+        const L = best.f.len, off = (L % BAY) / 2, nb = Math.floor(L / BAY), k0 = Math.max(0, Math.min(nb - 4, Math.round(nb * .12)));
+        const tMid = off + (k0 + 1.5) * BAY, gT = groundAt(A.x + d.x * tMid + n.x * 2, A.z + d.z * tMid + n.z * 2);
+        scene.add(buildTerrace({ A, d, n, g0: gT, tStart: off + k0 * BAY, renderer }));
       }
     }
-    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wg.computeVertexNormals();
-    const walls = new THREE.Mesh(wg, wallMat); walls.castShadow = walls.receiveShadow = true; scene.add(walls);
   }
 }
 

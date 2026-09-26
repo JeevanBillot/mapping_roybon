@@ -133,7 +133,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
     <button data-o="relief" disabled>Relief</button><button data-o="chm" disabled>Hauteur végétation</button><button data-o="others" disabled>Autres arbres</button><button data-o="buildings" class="on">Bâtiments</button><button data-o="cadastre">Cadastre</button><button data-o="numbers" class="on">Numéros</button>
   </div>
   <div class="section">Éléments</div>
-  <div class="chips" id="elements"><button id="place-tennis">Placer le court de tennis</button><button id="del-tennis" class="hidden">Supprimer le court</button></div>
+  <div class="chips" id="elements"><button id="pick-house">Désigner la maison</button><button id="place-tennis">Placer le court de tennis</button><button id="del-tennis" class="hidden">Supprimer le court</button></div>
   <div class="section">Espèces</div>
   <input class="search" id="search" type="search" placeholder="Rechercher une espèce…">
   <div class="species" id="species"></div>
@@ -234,6 +234,20 @@ function drawFeatures() {
   $('#place-tennis').textContent = t ? 'Replacer le court de tennis' : 'Placer le court de tennis';
   $('#del-tennis').classList.toggle('hidden', !t);
   if (t) L.polygon(t.ring, { pane: 'feat', color: '#fff', weight: 2, dashArray: '6 4', fill: false }).bindTooltip('Court de tennis', { permanent: true, direction: 'center', className: 'feat-lbl' }).addTo(featLayer);
+  const h = features.find(f => f.type === 'house');
+  if (h) L.marker([h.lat, h.lon], { pane: 'feat', interactive: false, icon: L.divIcon({ className: '', html: '', iconSize: [0, 0] }) }).bindTooltip('Maison', { permanent: true, direction: 'center', className: 'feat-lbl' }).addTo(featLayer);
+}
+// Désigner la maison principale (sa façade et sa terrasse sont dessinées en 3D)
+let pickingHouse = false;
+$('#pick-house').onclick = () => {
+  pickingHouse = true; hadHidden = document.body.classList.contains('ui-hidden'); document.body.classList.add('ui-hidden'); $('#card').classList.add('hidden');
+  $('#place-text').textContent = 'Touche la maison sur le plan'; $('#pb-save').classList.add('hidden'); $('#pb-redo').classList.add('hidden'); $('#placebar').classList.remove('hidden');
+};
+async function pickHouse(latlng) {
+  pickingHouse = false; $('#placebar').classList.add('hidden'); if (!hadHidden) document.body.classList.remove('ui-hidden');
+  const f = { id: 'feature-house', type: 'house', lat: latlng.lat, lon: latlng.lng };
+  const r = await D.saveFeature(f); features = features.filter(x => x.id !== f.id).concat([f]); drawFeatures();
+  alert(r.cloud ? 'Maison enregistrée. Sa façade et sa terrasse apparaîtront dans la 3D.' : 'Maison enregistrée sur cet appareil.');
 }
 function placeText() {
   const n = corners.length;
@@ -257,7 +271,7 @@ function stopPlacing() {
 }
 map.on('click', e => { if (!placing || corners.length >= 4) return; corners.push([e.latlng.lat, e.latlng.lng]); drawPlacing(); });
 $('#place-tennis').onclick = startPlacing;
-$('#pb-cancel').onclick = stopPlacing;
+$('#pb-cancel').onclick = () => { if (pickingHouse) { pickingHouse = false; $('#placebar').classList.add('hidden'); if (!hadHidden) document.body.classList.remove('ui-hidden'); } else stopPlacing(); };
 $('#pb-redo').onclick = () => { corners = []; drawPlacing(); };
 $('#pb-save').onclick = async () => {
   const f = { id: 'feature-tennis', type: 'tennis', ring: corners.slice() };
@@ -334,7 +348,7 @@ function buildPrint() {
       Lm.fetchBuildings(latMin, lonMin, latMax, lonMax).catch(() => []),
     ]);
 
-    for (const b of buildings) L.polygon(b.rings, { pane: 'bld', color: '#7a6a58', weight: 1, fillColor: '#d9cdb8', fillOpacity: .85 }).bindTooltip(`Bâtiment${b.height ? ` · ${Math.round(b.height)} m` : ''}`).addTo(ov.buildings);
+    for (const b of buildings) L.polygon(b.rings, { pane: 'bld', color: '#7a6a58', weight: 1, fillColor: '#d9cdb8', fillOpacity: .85 }).bindTooltip(`Bâtiment${b.height ? ` · ${Math.round(b.height)} m` : ''}`).on('click', e => { if (pickingHouse) { L.DomEvent.stopPropagation(e); pickHouse(e.latlng); } }).addTo(ov.buildings);
     if (lidar.ok) {
       const bounds = lidar.boundsLatLon;
       L.imageOverlay(lidar.hillshadeCanvas().toDataURL(), bounds, { pane: 'relief', opacity: .9 }).addTo(ov.relief);
