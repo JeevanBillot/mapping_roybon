@@ -32,6 +32,7 @@ canvas { display:block; }
 @keyframes spin { to { transform:rotate(360deg); } }
 #labels { position:fixed; inset:0; pointer-events:none; z-index:5; overflow:hidden; }
 .lbl { position:absolute; left:0; top:0; transform:translate(-50%,-100%); background:rgba(20,30,22,.78); color:#fff; font-size:11.5px; font-weight:600; padding:3px 8px 3px 6px; border-radius:10px; white-space:nowrap; display:flex; align-items:center; gap:5px; will-change:transform; }
+.lbl.water { background:rgba(22,62,96,.82); font-style:italic; }
 .lbl i { width:8px; height:8px; border-radius:50%; display:inline-block; }
 #tip { position:fixed; z-index:20; pointer-events:none; background:rgba(0,0,0,.75); color:#fff; padding:5px 10px; border-radius:8px; font-size:.8rem; font-weight:600; white-space:nowrap; transform:translate(-50%, -150%); }
 #cross { position:fixed; left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; z-index:15; pointer-events:none; }
@@ -120,7 +121,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadLidar, fetchBuildings, inBuildings, merc } from './lidar.js';
+import { loadLidar, fetchBuildings, fetchWater, inBuildings, merc } from './lidar.js';
 
 const D = window.RoybonData, $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -147,9 +148,10 @@ const latMin = lat0 - S / mLat, latMax = lat0 + S / mLat, lonMin = lon0 - S / mL
 
 // ---------- 2. Relief et végétation (LiDAR HD), bâtiments ----------
 const size = clamp(Math.round(2 * S / .6), 384, 768);
-const [lidar, buildings] = await Promise.all([
+const [lidar, buildings, water] = await Promise.all([
   loadLidar(latMin, lonMin, latMax, lonMax, size, t => progress(t, .15)),
   fetchBuildings(latMin, lonMin, latMax, lonMax).catch(e => { warn('Bâtiments IGN indisponibles.'); return []; }),
+  fetchWater(latMin, lonMin, latMax, lonMax).catch(e => { warn('Cours d\'eau IGN indisponibles.'); return { areas: [], streams: [] }; }),
 ]);
 progress('Analyse du relief…', .45);
 let groundLL;
@@ -171,7 +173,52 @@ else {
   groundLL = (lat, lon) => { const fi = clamp((latMax - lat) / (latMax - latMin) * (N - 1), 0, N - 1.001), fj = clamp((lon - lonMin) / (lonMax - lonMin) * (N - 1), 0, N - 1.001); const i = fi | 0, j = fj | 0, a = fi - i, b = fj - j; return H[i * N + j] * (1 - a) * (1 - b) + H[i * N + j + 1] * (1 - a) * b + H[(i + 1) * N + j] * a * (1 - b) + H[(i + 1) * N + j + 1] * a * b; };
 }
 let base = Infinity; for (let i = 0; i <= 20; i++) for (let j = 0; j <= 20; j++) base = Math.min(base, groundLL(latMin + (latMax - latMin) * i / 20, lonMin + (lonMax - lonMin) * j / 20));
-const groundAt = (x, z) => groundLL(...toLatLon(x, z)) - base;
+const rawGround = (x, z) => groundLL(...toLatLon(x, z)) - base;
+
+// ---------- Eau (BD TOPO) : étangs et cours d'eau, lit creusé dans le relief ----------
+const pipL = (x, z, ring) => { let ins = false; for (let i = 0, k = ring.length - 1; i < ring.length; k = i++) { const a = ring[i], b = ring[k]; if ((a.z > z) !== (b.z > z) && x < (b.x - a.x) * (z - a.z) / (b.z - a.z) + a.x) ins = !ins; } return ins; };
+const segDist = (x, z, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1e-9, t = clamp(((x - a.x) * dx + (z - a.z) * dz) / L2, 0, 1); return [Math.hypot(x - a.x - t * dx, z - a.z - t * dz), t]; };
+const lakes = [], streams = [];
+for (const a of water.areas) {
+  const ring = a.rings[0].map(([la, lo]) => toLocal(la, lo)); if (ring.length < 3) continue;
+  const xs = ring.map(p => p.x), zs = ring.map(p => p.z), bb = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  if (bb[1] < -S * 1.3 || bb[0] > S * 1.3 || bb[3] < -S * 1.3 || bb[2] > S * 1.3) continue;
+  const inside = []; for (let x = bb[0]; x <= bb[1]; x += 2) for (let z = bb[2]; z <= bb[3]; z += 2) if (pipL(x, z, ring)) inside.push(rawGround(x, z));
+  const edge = ring.map(p => rawGround(p.x, p.z)).sort((m, n) => m - n);
+  inside.sort((m, n) => m - n);
+  const level = inside.length ? Math.min(inside[Math.floor(inside.length * .3)], edge[Math.floor(edge.length * .2)]) : edge[0];
+  lakes.push({ ring, bb, level, name: a.name, nature: a.nature });
+}
+for (const st of water.streams) {
+  const raw = st.coords.map(([la, lo]) => toLocal(la, lo)), pts = [];
+  for (let i = 0; i < raw.length - 1; i++) { const a = raw[i], b = raw[i + 1], n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z))); for (let k = 0; k < n; k++) pts.push({ x: a.x + (b.x - a.x) * k / n, z: a.z + (b.z - a.z) * k / n }); }
+  if (raw.length) pts.push(raw[raw.length - 1]);
+  const keep = pts.filter(p => Math.abs(p.x) < S * 1.2 && Math.abs(p.z) < S * 1.2); if (keep.length < 3) continue;
+  const w = st.width;
+  // Fond du lit : point le plus bas autour de l'axe, lissé le long du cours
+  let h = keep.map(p => { let m = Infinity; for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) m = Math.min(m, rawGround(p.x + dx * w / 2, p.z + dz * w / 2)); return m; });
+  for (let pass = 0; pass < 3; pass++) h = h.map((_, i) => { let s2 = 0, n = 0; for (let k = -4; k <= 4; k++) { const v = h[i + k]; if (v != null) { s2 += v; n++; } } return s2 / n; });
+  streams.push({ pts: keep, h, w, name: st.name });
+}
+// Index spatial des segments de cours d'eau (mailles de 10 m)
+const SG = new Map(), sgKey = (i, j) => i * 100003 + j;
+streams.forEach((st, si) => { for (let i = 0; i < st.pts.length - 1; i++) { const a = st.pts[i], b = st.pts[i + 1], r = st.w / 2 + 3; for (let gx = Math.floor((Math.min(a.x, b.x) - r) / 10); gx <= Math.floor((Math.max(a.x, b.x) + r) / 10); gx++) for (let gz = Math.floor((Math.min(a.z, b.z) - r) / 10); gz <= Math.floor((Math.max(a.z, b.z) + r) / 10); gz++) { const k = sgKey(gx, gz); if (!SG.has(k)) SG.set(k, []); SG.get(k).push([si, i]); } } });
+function nearestStream(x, z) {
+  let best = null; for (const [si, i] of SG.get(sgKey(Math.floor(x / 10), Math.floor(z / 10))) || []) { const st = streams[si], [d, t] = segDist(x, z, st.pts[i], st.pts[i + 1]); if (!best || d - st.w / 2 < best.d - best.w / 2) best = { d, w: st.w, h: st.h[i] + (st.h[i + 1] - st.h[i]) * t }; }
+  return best;
+}
+const smooth01 = t => t * t * (3 - 2 * t);
+function carve(x, z, y) {
+  for (const L of lakes) {
+    if (x < L.bb[0] || x > L.bb[1] || z < L.bb[2] || z > L.bb[3] || !pipL(x, z, L.ring)) continue;
+    let dEdge = Infinity; for (let i = 0; i < L.ring.length; i++) dEdge = Math.min(dEdge, segDist(x, z, L.ring[i], L.ring[(i + 1) % L.ring.length])[0]);
+    y = Math.min(y, L.level - .3 - 1.2 * clamp(dEdge / 4, 0, 1));
+  }
+  const ns = nearestStream(x, z);
+  if (ns && ns.d < ns.w / 2 + 2.5) { const s2 = smooth01(clamp((ns.d - ns.w / 2) / 2.5, 0, 1)); y = Math.min(y, ns.h - .7) * (1 - s2) + y * s2; }
+  return y;
+}
+const groundAt = (lakes.length || streams.length) ? (x, z) => carve(x, z, rawGround(x, z)) : rawGround;
 
 // ---------- 3. Rendu ----------
 progress('Construction de la scène…', .55);
@@ -258,20 +305,65 @@ tMat.onBeforeCompile = sh => {
 const terrain = new THREE.Mesh(tGeo, tMat); terrain.receiveShadow = true; scene.add(terrain);
 { // Paysage environnant : raccordé au bord de la zone, photo aérienne élargie
   let edge = 0, n = 0; for (let k = -10; k <= 10; k++) for (const [x, z] of [[k * S / 10, -S], [k * S / 10, S], [-S, k * S / 10], [S, k * S / 10]]) { edge += groundAt(x, z); n++; }
-  edge /= n; const F = S * 5, FN = 97;
-  const fGeo = new THREE.PlaneGeometry(2 * F, 2 * F, FN - 1, FN - 1); fGeo.rotateX(-Math.PI / 2);
+  edge /= n; const F = S * 5;
+  // Anneau carré de S à F (aucune géométrie sous la zone détaillée, qui garde son relief creusé)
+  const NR = 40, NP = 192, P = [], UVs = [], I = [];
   const [fx0, fy0] = merc(lat0 - F / mLat, lon0 - F / mLon), [fx1, fy1] = merc(lat0 + F / mLat, lon0 + F / mLon);
-  const pos = fGeo.attributes.position, uv = fGeo.attributes.uv;
-  for (let k = 0; k < pos.count; k++) {
-    const x = pos.getX(k), z = pos.getZ(k), out = Math.max(Math.abs(x), Math.abs(z)) - S;
-    const g = groundAt(clamp(x, -S, S), clamp(z, -S, S)), t = clamp(out / (S * 1.5), 0, 1);
-    pos.setY(k, (out < 0 ? g - .6 : g + (edge - g) * t * t * (3 - 2 * t)) - .05);
-    const [la, lo] = toLatLon(x, z), [mx, my] = merc(la, lo); uv.setXY(k, (mx - fx0) / (fx1 - fx0), (my - fy0) / (fy1 - fy0));
+  const onSquare = (t, r) => { const u = t * 8 - 1; const side = Math.floor((t * 4) % 4), f = (t * 4) % 1 * 2 - 1; return side === 0 ? [r * f, -r] : side === 1 ? [r, r * f] : side === 2 ? [-r * f, r] : [-r, -r * f]; };
+  for (let i = 0; i <= NR; i++) {
+    const r = (S - 1.5) * Math.pow(F / (S - 1.5), i / NR);
+    for (let j = 0; j < NP; j++) {
+      const [x, z] = onSquare(j / NP, r), out = Math.max(Math.abs(x), Math.abs(z)) - S;
+      const g = groundAt(clamp(x, -S, S), clamp(z, -S, S)), t = clamp(out / (S * 1.5), 0, 1);
+      P.push(x, (i === 0 ? g - .35 : g + (edge - g) * t * t * (3 - 2 * t)) - .05, z);
+      const [la, lo] = toLatLon(x, z), [mx, my] = merc(la, lo); UVs.push((mx - fx0) / (fx1 - fx0), (my - fy0) / (fy1 - fy0));
+      if (i) { const a = (i - 1) * NP + j, b = (i - 1) * NP + (j + 1) % NP, c = i * NP + j, d = i * NP + (j + 1) % NP; I.push(a, c, b, b, c, d); }
+    }
   }
+  const fGeo = new THREE.BufferGeometry(); fGeo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); fGeo.setAttribute('uv', new THREE.Float32BufferAttribute(UVs, 2)); fGeo.setIndex(I);
   fGeo.computeVertexNormals();
   const farMat = new THREE.MeshStandardMaterial({ color: '#7b9a58', roughness: 1 });
+  farMat.side = THREE.DoubleSide;
   const far = new THREE.Mesh(fGeo, farMat); far.receiveShadow = true; scene.add(far);
   loadImg(wms([fx0, fy0, fx1, fy1], 2048)).then(im => { const t = new THREE.Texture(im); t.needsUpdate = true; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; farMat.map = t; farMat.color.set('#ffffff'); farMat.needsUpdate = true; }).catch(() => {});
+}
+
+// ---------- Surfaces d'eau animées ----------
+const waterLabels = [];
+if (lakes.length || streams.length) {
+  const pm = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene(); envScene.add(sky.clone());
+  const env = pm.fromScene(envScene, 0, 1, S * 30).texture;
+  const waterMat = new THREE.MeshStandardMaterial({ color: '#27617c', roughness: .16, metalness: 0, envMap: env, envMapIntensity: .42, transparent: true, opacity: .95, side: THREE.DoubleSide });
+  waterMat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = U.time;
+    sh.vertexShader = 'varying vec2 vWxz; varying vec2 vFlow;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n vWxz = (modelMatrix * vec4(transformed, 1.0)).xz; vFlow = uv;');
+    sh.fragmentShader = 'uniform float uTime; varying vec2 vWxz; varying vec2 vFlow;\n' + sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      vec2 q = vWxz; float t = uTime; float fl = vFlow.y - t * 0.6;
+      vec3 wn = vec3(sin(q.x * 1.7 + t * 1.3) * .5 + sin(q.y * 2.3 - t * 1.1 + q.x * .7) * .5 + sin((q.x + q.y) * 4.1 + t * 2.) * .25 + sin(fl * 5.) * .35 * vFlow.x,
+                     0.,
+                     cos(q.y * 1.9 - t * 1.2) * .5 + cos(q.x * 2.9 + t * .9 - q.y * .6) * .5 + cos((q.x - q.y) * 3.7 - t * 1.7) * .25 + cos(fl * 4.3) * .35 * vFlow.x) * .055;
+      normal = normalize(normal + (viewMatrix * vec4(wn, 0.)).xyz);`);
+  };
+  for (const L of lakes) {
+    const geo = new THREE.ShapeGeometry(new THREE.Shape(L.ring.map(p => new THREE.Vector2(p.x, -p.z)))); geo.rotateX(-Math.PI / 2);
+    const uvA = geo.attributes.uv; for (let k = 0; k < uvA.count; k++) uvA.setXY(k, 0, 0);
+    const m = new THREE.Mesh(geo, waterMat); m.position.y = L.level - .12; m.receiveShadow = true; scene.add(m);
+    if (L.name) { const c = L.ring.reduce((a, p) => ({ x: a.x + p.x / L.ring.length, z: a.z + p.z / L.ring.length }), { x: 0, z: 0 }); waterLabels.push({ name: L.name, pos: new THREE.Vector3(c.x, L.level + 1.5, c.z) }); }
+  }
+  const named = {};
+  for (const st of streams) {
+    const P = [], UV = [], I = []; let len = 0; const half = st.w / 2 + .6;
+    st.pts.forEach((p, i) => {
+      const a = st.pts[Math.max(0, i - 1)], b = st.pts[Math.min(st.pts.length - 1, i + 1)], dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l;
+      if (i) len += Math.hypot(p.x - st.pts[i - 1].x, p.z - st.pts[i - 1].z);
+      const y = st.h[i] - .22; P.push(p.x + nx * half, y, p.z + nz * half, p.x - nx * half, y, p.z - nz * half); UV.push(1, len, 1, len);
+      if (i) { const k = i * 2; I.push(k - 2, k - 1, k, k - 1, k + 1, k); }
+    });
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2)); geo.setIndex(I); geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, waterMat); m.receiveShadow = true; scene.add(m);
+    if (st.name && (!named[st.name] || named[st.name].pts.length < st.pts.length)) named[st.name] = st;
+  }
+  for (const n in named) { const st = named[n], i = st.pts.length >> 1; waterLabels.push({ name: n, pos: new THREE.Vector3(st.pts[i].x, st.h[i] + 1.5, st.pts[i].z) }); }
 }
 
 // ---------- 4. Bâtiments : toits reconstruits (LiDAR, sinon altitudes de toit BD TOPO), murs jusqu'au toit ----------
@@ -579,7 +671,8 @@ joyEl.addEventListener('touchend', () => { joyId = null; joy.x = joy.y = 0; knob
 
 // ---------- 7. Étiquettes, sélection, fiche ----------
 const labelsEl = $('#labels');
-for (const L of labelled) { const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = `<i style="background:${D.colorFor(L.s.t.species.sci || D.name(L.s.t))}"></i>${esc(D.name(L.s.t))}`; labelsEl.appendChild(el); L.el = el; }
+for (const W of waterLabels) { const el = document.createElement('div'); el.className = 'lbl water'; el.innerHTML = `<i style="background:#3d8fd1"></i>${esc(W.name)}`; labelsEl.appendChild(el); labelled.push({ pos: W.pos, el }); }
+for (const L of labelled) { if (L.el) continue; const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = `<i style="background:${D.colorFor(L.s.t.species.sci || D.name(L.s.t))}"></i>${esc(D.name(L.s.t))}`; labelsEl.appendChild(el); L.el = el; }
 const v3 = new THREE.Vector3();
 function updateLabels() {
   const maxD = mode === 'walk' ? 45 : Math.min(260, orbit.getDistance() * 1.25), placed = [];

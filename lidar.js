@@ -162,18 +162,48 @@ export class Lidar {
   get boundsLatLon() { const [mx0, my0, mx1, my1] = this.bbox; return [unmerc(mx0, my0), unmerc(mx1, my1)]; }
 }
 
-/* Bâtiments BD TOPO (emprise + hauteur), coordonnées [lat, lon]. */
-export async function fetchBuildings(latMin, lonMin, latMax, lonMax) {
-  const url = `https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=BDTOPO_V3:batiment&OUTPUTFORMAT=application/json&SRSNAME=EPSG:4326&COUNT=1000&BBOX=${latMin},${lonMin},${latMax},${lonMax},urn:ogc:def:crs:EPSG::4326`;
+/* Requête WFS BD TOPO sur l'emprise ; coordonnées renvoyées en [lat, lon]. */
+async function fetchWFS(type, latMin, lonMin, latMax, lonMax, count = 1000) {
+  const url = `https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=${type}&OUTPUTFORMAT=application/json&SRSNAME=EPSG:4326&COUNT=${count}&BBOX=${latMin},${lonMin},${latMax},${lonMax},urn:ogc:def:crs:EPSG::4326`;
   const gj = await (await fetch(url)).json();
   const latC = (latMin + latMax) / 2, fix = c => Math.abs(c[0] - latC) < Math.abs(c[1] - latC) ? [c[0], c[1]] : [c[1], c[0]];
+  return (gj.features || []).filter(f => f.geometry).map(f => ({ g: f.geometry, props: f.properties || {}, fix }));
+}
+const polysOf = ({ g, fix }) => (g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []).map(rings => rings.map(r => r.map(fix)));
+const linesOf = ({ g, fix }) => (g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : []).map(l => l.map(fix));
+
+/* Bâtiments BD TOPO (emprise + hauteur + altitudes de toit). */
+export async function fetchBuildings(latMin, lonMin, latMax, lonMax) {
   const out = [];
-  for (const f of gj.features || []) {
-    const g = f.geometry; if (!g) continue;
-    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-    for (const rings of polys) out.push({ rings: rings.map(r => r.map(fix)), height: +(f.properties && f.properties.hauteur) || null, props: f.properties || {} });
-  }
+  for (const f of await fetchWFS('BDTOPO_V3:batiment', latMin, lonMin, latMax, lonMax))
+    for (const rings of polysOf(f)) out.push({ rings, height: +f.props.hauteur || null, props: f.props });
   return out;
+}
+
+/* Eau BD TOPO : plans d'eau et surfaces (polygones), cours d'eau (lignes) avec nom et largeur. */
+const propLike = (p, re) => { for (const k in p) if (re.test(k) && p[k] != null && p[k] !== '') return p[k]; return null; };
+function streamWidth(p) {
+  const v = propLike(p, /largeur/i);
+  if (typeof v === 'number' && v > 0) return Math.min(v, 30);
+  const nums = String(v || '').match(/\d+(?:[.,]\d+)?/g);
+  if (nums && nums.length) { const hi = +nums[nums.length - 1].replace(',', '.'); return hi <= 15 ? 3 : Math.min(30, hi * .5); }
+  return 3;
+}
+export async function fetchWater(latMin, lonMin, latMax, lonMax) {
+  const [lakes, surfaces, lines] = await Promise.all([
+    fetchWFS('BDTOPO_V3:plan_d_eau', latMin, lonMin, latMax, lonMax).catch(() => []),
+    fetchWFS('BDTOPO_V3:surface_hydrographique', latMin, lonMin, latMax, lonMax).catch(() => []),
+    fetchWFS('BDTOPO_V3:troncon_hydrographique', latMin, lonMin, latMax, lonMax).catch(() => []),
+  ]);
+  const areas = [];
+  for (const f of [...lakes, ...surfaces]) for (const rings of polysOf(f)) areas.push({ rings, name: propLike(f.props, /toponyme/i), nature: f.props.nature || null });
+  const streams = [];
+  for (const f of lines) {
+    const p = f.props, pos = p.position_par_rapport_au_sol;
+    if (p.fictif === true || p.fictif === 'Vrai' || /souterrain/i.test(String(pos)) || +pos < 0) continue;
+    for (const coords of linesOf(f)) streams.push({ coords, name: propLike(p, /toponyme/i), width: streamWidth(p), nature: p.nature || null });
+  }
+  return { areas, streams };
 }
 export function inPolygon(lat, lon, ring) {
   let inside = false;

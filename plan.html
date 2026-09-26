@@ -123,7 +123,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
   </div>
   <div class="section">Calques</div>
   <div class="chips" id="overlays">
-    <button data-o="relief" disabled>Relief</button><button data-o="chm" disabled>Hauteur végétation</button><button data-o="others" disabled>Autres arbres</button><button data-o="buildings" class="on">Bâtiments</button><button data-o="cadastre">Cadastre</button><button data-o="numbers" class="on">Numéros</button>
+    <button data-o="relief" disabled>Relief</button><button data-o="chm" disabled>Hauteur végétation</button><button data-o="others" disabled>Autres arbres</button><button data-o="water" class="on">Eau</button><button data-o="buildings" class="on">Bâtiments</button><button data-o="cadastre">Cadastre</button><button data-o="numbers" class="on">Numéros</button>
   </div>
   <div class="section">Espèces</div>
   <input class="search" id="search" type="search" placeholder="Rechercher une espèce…">
@@ -165,7 +165,7 @@ const North = L.Control.extend({ onAdd() { const d = L.DomUtil.create('div', 'no
 new North({ position: 'topright' }).addTo(map);
 
 map.createPane('relief').style.zIndex = 250; map.createPane('chm').style.zIndex = 260; map.createPane('cad').style.zIndex = 270;
-map.createPane('bld').style.zIndex = 380; map.createPane('others').style.zIndex = 390; map.createPane('crowns').style.zIndex = 420; map.createPane('nums').style.zIndex = 640;
+map.createPane('water').style.zIndex = 300; map.createPane('bld').style.zIndex = 380; map.createPane('others').style.zIndex = 390; map.createPane('crowns').style.zIndex = 420; map.createPane('nums').style.zIndex = 640;
 const bases = {
   ortho: L.tileLayer(WMTS('ORTHOIMAGERY.ORTHOPHOTOS'), { maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN' }),
   ign: L.tileLayer(WMTS('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png'), { maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN' }),
@@ -173,11 +173,11 @@ const bases = {
 };
 let base = 'ortho'; bases.ortho.addTo(map);
 const ov = {
-  relief: L.layerGroup(), chm: L.layerGroup(), others: L.layerGroup(), numbers: L.layerGroup(),
+  relief: L.layerGroup(), chm: L.layerGroup(), others: L.layerGroup(), numbers: L.layerGroup(), water: L.layerGroup(),
   buildings: L.layerGroup(), cadastre: L.tileLayer(WMTS('CADASTRALPARCELS.PARCELLAIRE_EXPRESS', 'image/png', 'PCI vecteur'), { pane: 'cad', maxZoom: 22, maxNativeZoom: 19, attribution: '© IGN / DGFiP' }),
 };
 const crownLayer = L.layerGroup().addTo(map);
-ov.buildings.addTo(map); ov.numbers.addTo(map);
+ov.buildings.addTo(map); ov.numbers.addTo(map); ov.water.addTo(map);
 
 let trees = [], rows = [], hidden = new Set(), lidar = null, buildings = [], colors = {};
 const crownStyle = r => base === 'ortho'
@@ -274,10 +274,17 @@ function buildPrint() {
   try {
     const Lm = await import('./lidar.js');
     const side = Math.max((latMax - latMin) * mLat, (lonMax - lonMin) * mLon);
-    [lidar, buildings] = await Promise.all([
+    let water;
+    [lidar, buildings, water] = await Promise.all([
       Lm.loadLidar(latMin, lonMin, latMax, lonMax, Math.max(256, Math.min(900, Math.round(side / .5)))),
       Lm.fetchBuildings(latMin, lonMin, latMax, lonMax).catch(() => []),
+      Lm.fetchWater(latMin - 150 / mLat, lonMin - 150 / mLon, latMax + 150 / mLat, lonMax + 150 / mLon).catch(() => ({ areas: [], streams: [] })),
     ]);
+    // Eau : étangs et cours d'eau (BD TOPO), largeur du trait proportionnelle au zoom
+    for (const a of water.areas) L.polygon(a.rings, { pane: 'water', color: '#3d7fb8', weight: 1.2, fillColor: '#7fb6e0', fillOpacity: .75 }).bindTooltip(esc(a.name || a.nature || 'Plan d\'eau'), { sticky: true }).addTo(ov.water);
+    const streamLines = water.streams.map(st => L.polyline(st.coords, { pane: 'water', color: '#3d8fd1', weight: 3, opacity: .95, lineCap: 'round' }).bindTooltip(esc(st.name || 'Cours d\'eau'), { sticky: true }).addTo(ov.water));
+    const streamWeight = () => { const mpp = 156543 * Math.cos(map.getCenter().lat * Math.PI / 180) / 2 ** map.getZoom(); streamLines.forEach((l, k) => l.setStyle({ weight: Math.max(2, Math.min(40, water.streams[k].width / mpp)) })); };
+    map.on('zoomend', streamWeight); streamWeight();
     for (const b of buildings) L.polygon(b.rings, { pane: 'bld', color: '#7a6a58', weight: 1, fillColor: '#d9cdb8', fillOpacity: .85 }).bindTooltip(`Bâtiment${b.height ? ` · ${Math.round(b.height)} m` : ''}`).addTo(ov.buildings);
     if (lidar.ok) {
       const bounds = lidar.boundsLatLon;
