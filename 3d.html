@@ -32,7 +32,7 @@ canvas { display:block; }
 @keyframes spin { to { transform:rotate(360deg); } }
 #labels { position:fixed; inset:0; pointer-events:none; z-index:5; overflow:hidden; }
 .lbl { position:absolute; left:0; top:0; transform:translate(-50%,-100%); background:rgba(20,30,22,.78); color:#fff; font-size:11.5px; font-weight:600; padding:3px 8px 3px 6px; border-radius:10px; white-space:nowrap; display:flex; align-items:center; gap:5px; will-change:transform; }
-.lbl.water { background:rgba(22,62,96,.82); font-style:italic; }
+.lbl.water { background:rgba(20,30,22,.78); font-style:italic; }
 .lbl i { width:8px; height:8px; border-radius:50%; display:inline-block; }
 #tip { position:fixed; z-index:20; pointer-events:none; background:rgba(0,0,0,.75); color:#fff; padding:5px 10px; border-radius:8px; font-size:.8rem; font-weight:600; white-space:nowrap; transform:translate(-50%, -150%); }
 #cross { position:fixed; left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; z-index:15; pointer-events:none; }
@@ -215,7 +215,7 @@ function carve(x, z, y) {
     y = Math.min(y, L.level - .3 - 1.2 * clamp(dEdge / 4, 0, 1));
   }
   const ns = nearestStream(x, z);
-  if (ns && ns.d < ns.w / 2 + 2.5) { const s2 = smooth01(clamp((ns.d - ns.w / 2) / 2.5, 0, 1)); y = Math.min(y, ns.h - .7) * (1 - s2) + y * s2; }
+  if (ns && ns.d < ns.w / 2 + 3) { const s2 = smooth01(clamp((ns.d - ns.w / 2 + .8) / 3.8, 0, 1)); y = Math.min(y, ns.h - .55) * (1 - s2) + y * s2; }
   return y;
 }
 const groundAt = (lakes.length || streams.length) ? (x, z) => carve(x, z, rawGround(x, z)) : rawGround;
@@ -333,16 +333,39 @@ const waterLabels = [];
 if (lakes.length || streams.length) {
   const pm = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene(); envScene.add(sky.clone());
   const env = pm.fromScene(envScene, 0, 1, S * 30).texture;
-  const waterMat = new THREE.MeshStandardMaterial({ color: '#27617c', roughness: .16, metalness: 0, envMap: env, envMapIntensity: .42, transparent: true, opacity: .95, side: THREE.DoubleSide });
+  // Étang : eau sombre de campagne, reflets doux du ciel, légère ondulation
+  const waterMat = new THREE.MeshStandardMaterial({ color: '#3f5446', roughness: .12, metalness: 0, envMap: env, envMapIntensity: .55, transparent: true, opacity: .93, side: THREE.DoubleSide });
   waterMat.onBeforeCompile = sh => {
     sh.uniforms.uTime = U.time;
-    sh.vertexShader = 'varying vec2 vWxz; varying vec2 vFlow;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n vWxz = (modelMatrix * vec4(transformed, 1.0)).xz; vFlow = uv;');
-    sh.fragmentShader = 'uniform float uTime; varying vec2 vWxz; varying vec2 vFlow;\n' + sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-      vec2 q = vWxz; float t = uTime; float fl = vFlow.y - t * 0.6;
-      vec3 wn = vec3(sin(q.x * 1.7 + t * 1.3) * .5 + sin(q.y * 2.3 - t * 1.1 + q.x * .7) * .5 + sin((q.x + q.y) * 4.1 + t * 2.) * .25 + sin(fl * 5.) * .35 * vFlow.x,
-                     0.,
-                     cos(q.y * 1.9 - t * 1.2) * .5 + cos(q.x * 2.9 + t * .9 - q.y * .6) * .5 + cos((q.x - q.y) * 3.7 - t * 1.7) * .25 + cos(fl * 4.3) * .35 * vFlow.x) * .055;
+    sh.vertexShader = 'varying vec2 vWxz;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n vWxz = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    sh.fragmentShader = 'uniform float uTime; varying vec2 vWxz;\n' + sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      vec2 q = vWxz; float t = uTime;
+      vec3 wn = vec3(sin(q.x * 1.3 + t * .9) * .5 + sin(q.y * 2.1 - t * .7 + q.x * .6) * .35 + sin((q.x + q.y) * 5.3 + t * 1.6) * .15, 0.,
+                     cos(q.y * 1.5 - t * .8) * .5 + cos(q.x * 2.4 + t * .6 - q.y * .5) * .35 + cos((q.x - q.y) * 4.7 - t * 1.4) * .15) * .035;
       normal = normalize(normal + (viewMatrix * vec4(wn, 0.)).xyz);`);
+  };
+  // Ruisseau : eau vert-brun qui s'écoule, bords fondus dans la berge, rides irrégulières entraînées par le courant
+  const streamMat = new THREE.MeshStandardMaterial({ color: '#3d4631', roughness: .16, metalness: 0, envMap: env, envMapIntensity: .38, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  const NOISE = `
+    float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+    float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+      return mix(mix(h21(i), h21(i + vec2(1., 0.)), f.x), mix(h21(i + vec2(0., 1.)), h21(i + vec2(1., 1.)), f.x), f.y); }
+    float fbm(vec2 p) { return vn(p) * .55 + vn(p * 2.1 + 7.3) * .3 + vn(p * 4.3 + 1.7) * .15; }`;
+  streamMat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = U.time;
+    sh.vertexShader = 'varying vec2 vWxz; varying vec2 vS;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n vWxz = (modelMatrix * vec4(transformed, 1.0)).xz; vS = uv;');
+    sh.fragmentShader = 'uniform float uTime; varying vec2 vWxz; varying vec2 vS;\n' + NOISE + '\n' + sh.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float edge = smoothstep(0.0, 0.35, vS.x) * smoothstep(1.0, 0.65, vS.x);
+        vec2 fp = vec2(vS.x * 2.5, vS.y * .45 - uTime * .9);
+        diffuseColor.rgb = mix(vec3(.2, .19, .14), diffuseColor.rgb, edge);                      // bord peu profond : vase
+        diffuseColor.rgb *= .9 + .2 * fbm(fp * 1.3);                                             // variations de teinte
+        diffuseColor.rgb += vec3(.07) * smoothstep(.72, .9, fbm(fp * 2.2 + 3.1)) * edge;         // reflets d'écume clairsemés
+        diffuseColor.a = .9 * smoothstep(0.02, 0.26, vS.x) * smoothstep(0.98, 0.74, vS.x);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        vec2 np = vec2(vS.x * 3., vS.y * .9 - uTime * 1.2); float e = .05, n0 = fbm(np);
+        vec3 wn = vec3(fbm(np + vec2(e, 0.)) - n0, 0., fbm(np + vec2(0., e)) - n0) * 2.2;
+        normal = normalize(normal + (viewMatrix * vec4(wn, 0.)).xyz);`);
   };
   for (const L of lakes) {
     const geo = new THREE.ShapeGeometry(new THREE.Shape(L.ring.map(p => new THREE.Vector2(p.x, -p.z)))); geo.rotateX(-Math.PI / 2);
@@ -352,15 +375,18 @@ if (lakes.length || streams.length) {
   }
   const named = {};
   for (const st of streams) {
-    const P = [], UV = [], I = []; let len = 0; const half = st.w / 2 + .6;
+    const P = [], UV = [], I = []; let len = 0; const ph = st.pts.length * .37;
     st.pts.forEach((p, i) => {
       const a = st.pts[Math.max(0, i - 1)], b = st.pts[Math.min(st.pts.length - 1, i + 1)], dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l;
       if (i) len += Math.hypot(p.x - st.pts[i - 1].x, p.z - st.pts[i - 1].z);
-      const y = st.h[i] - .22; P.push(p.x + nx * half, y, p.z + nz * half, p.x - nx * half, y, p.z - nz * half); UV.push(1, len, 1, len);
+      const half = st.w / 2 * (.72 + .18 * Math.sin(len * .19 + ph) + .1 * Math.sin(len * .61 + ph * 2)) + .35;   // largeur irrégulière
+      const wob = .55 * Math.sin(len * .08 + ph) + .3 * Math.sin(len * .23 + ph * 3);                          // petit méandre
+      const cx = p.x + nx * wob, cz = p.z + nz * wob, y = st.h[i] - .25;
+      P.push(cx + nx * half, y, cz + nz * half, cx - nx * half, y, cz - nz * half); UV.push(0, len, 1, len);
       if (i) { const k = i * 2; I.push(k - 2, k - 1, k, k - 1, k + 1, k); }
     });
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2)); geo.setIndex(I); geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, waterMat); m.receiveShadow = true; scene.add(m);
+    const m = new THREE.Mesh(geo, streamMat); m.receiveShadow = true; m.renderOrder = 1; scene.add(m);
     if (st.name && (!named[st.name] || named[st.name].pts.length < st.pts.length)) named[st.name] = st;
   }
   for (const n in named) { const st = named[n], i = st.pts.length >> 1; waterLabels.push({ name: n, pos: new THREE.Vector3(st.pts[i].x, st.h[i] + 1.5, st.pts[i].z) }); }
@@ -671,7 +697,7 @@ joyEl.addEventListener('touchend', () => { joyId = null; joy.x = joy.y = 0; knob
 
 // ---------- 7. Étiquettes, sélection, fiche ----------
 const labelsEl = $('#labels');
-for (const W of waterLabels) { const el = document.createElement('div'); el.className = 'lbl water'; el.innerHTML = `<i style="background:#3d8fd1"></i>${esc(W.name)}`; labelsEl.appendChild(el); labelled.push({ pos: W.pos, el }); }
+for (const W of waterLabels) { const el = document.createElement('div'); el.className = 'lbl water'; el.innerHTML = `<i style="background:#8fb3a8"></i>${esc(W.name)}`; labelsEl.appendChild(el); labelled.push({ pos: W.pos, el }); }
 for (const L of labelled) { if (L.el) continue; const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = `<i style="background:${D.colorFor(L.s.t.species.sci || D.name(L.s.t))}"></i>${esc(D.name(L.s.t))}`; labelsEl.appendChild(el); L.el = el; }
 const v3 = new THREE.Vector3();
 function updateLabels() {
