@@ -119,7 +119,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadLidar, fetchBuildings, inBuildings, merc } from './lidar.js';
 
 const D = window.RoybonData, $ = s => document.querySelector(s);
@@ -274,23 +274,129 @@ const terrain = new THREE.Mesh(tGeo, tMat); terrain.receiveShadow = true; scene.
   loadImg(wms([fx0, fy0, fx1, fy1], 2048)).then(im => { const t = new THREE.Texture(im); t.needsUpdate = true; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; farMat.map = t; farMat.color.set('#ffffff'); farMat.needsUpdate = true; }).catch(() => {});
 }
 
-// ---------- 4. Bâtiments ----------
+// ---------- 4. Bâtiments : toits reconstruits (LiDAR, sinon altitudes de toit BD TOPO), murs jusqu'au toit ----------
+progress('Reconstruction des toits…', .66);
+let nRoofLidar = 0;
 {
-  const wall = new THREE.MeshStandardMaterial({ color: '#e6dccb', roughness: .95 });
-  const roof = ortho ? new THREE.MeshStandardMaterial({ map: ortho, roughness: .85 }) : new THREE.MeshStandardMaterial({ color: '#9c5a44', roughness: .85 });
+  const wallMat = new THREE.MeshStandardMaterial({ color: '#e8dfcf', roughness: .95, side: THREE.DoubleSide });
+  const roofMat = ortho ? new THREE.MeshStandardMaterial({ map: ortho, roughness: .8, side: THREE.DoubleSide }) : new THREE.MeshStandardMaterial({ color: '#9c5a44', roughness: .8, side: THREE.DoubleSide });
+  const pip = (x, z, ring) => { let ins = false; for (let i = 0, k = ring.length - 1; i < ring.length; k = i++) { const a = ring[i], b = ring[k]; if ((a.z > z) !== (b.z > z) && x < (b.x - a.x) * (z - a.z) / (b.z - a.z) + a.x) ins = !ins; } return ins; };
+  // Découpe du polygone par une maille carrée (Sutherland-Hodgman)
+  function clipRect(poly, x0, x1, z0, z1) {
+    const planes = [
+      [p => p.x >= x0, (a, b) => ({ x: x0, z: a.z + (x0 - a.x) / (b.x - a.x) * (b.z - a.z) })],
+      [p => p.x <= x1, (a, b) => ({ x: x1, z: a.z + (x1 - a.x) / (b.x - a.x) * (b.z - a.z) })],
+      [p => p.z >= z0, (a, b) => ({ z: z0, x: a.x + (z0 - a.z) / (b.z - a.z) * (b.x - a.x) })],
+      [p => p.z <= z1, (a, b) => ({ z: z1, x: a.x + (z1 - a.z) / (b.z - a.z) * (b.x - a.x) })],
+    ];
+    let out = poly;
+    for (const [inside, cut] of planes) {
+      const inp = out; out = []; if (!inp.length) break;
+      for (let i = 0; i < inp.length; i++) { const cur = inp[i], prev = inp[(i + inp.length - 1) % inp.length], ci = inside(cur), pi = inside(prev); if (ci) { if (!pi) out.push(cut(prev, cur)); out.push(cur); } else if (pi) out.push(cut(prev, cur)); }
+    }
+    return out;
+  }
+  // Toit mesuré : surface LiDAR (MNS) filtrée dans l'emprise du bâtiment (cheminées et bruit retirés)
+  function lidarRoof(ring, g0, props = {}, hgt = 0) {
+    const px = ring.map(p => lidar.toPix(...toLatLon(p.x, p.z)));
+    const j0 = Math.max(0, Math.floor(Math.min(...px.map(q => q[0]))) - 2), j1 = Math.min(lidar.w - 1, Math.ceil(Math.max(...px.map(q => q[0]))) + 2);
+    const i0 = Math.max(0, Math.floor(Math.min(...px.map(q => q[1]))) - 2), i1 = Math.min(lidar.h - 1, Math.ceil(Math.max(...px.map(q => q[1]))) + 2);
+    const W = j1 - j0 + 1, Hh = i1 - i0 + 1; if (W < 3 || Hh < 3) return null;
+    const raw = new Float32Array(W * Hh).fill(NaN), inside = new Uint8Array(W * Hh), vals = [];
+    for (let i = 0; i < Hh; i++) for (let j = 0; j < W; j++) {
+      const [la, lo] = lidar.toLatLon(j0 + j, i0 + i), q = toLocal(la, lo);
+      if (!pip(q.x, q.z, ring)) continue;
+      const v = lidar.mns[(i0 + i) * lidar.w + j0 + j] - base; raw[i * W + j] = v; inside[i * W + j] = 1; vals.push(v);
+    }
+    if (vals.length < 8) return null;
+    vals.sort((a, b) => a - b);
+    // Plafond du toit : altitude maximale du toit connue de l'IGN, sinon hauteur BD TOPO ; les arbres qui dépassent sont écartés
+    const aMax = +props.altitude_maximale_toit, aSol = +props.altitude_minimale_sol;
+    let top = vals[Math.floor(vals.length * .97)];
+    if (aMax && aSol) top = Math.min(top, g0 + (aMax - aSol) + .5); else if (hgt) top = Math.min(top, g0 + hgt + 1.5);
+    const low = g0 + 2.2;
+    if (top - g0 < 2.5) return null; // pas de toit lisible (bâtiment trop bas ou non relevé)
+    for (let k = 0; k < raw.length; k++) if (raw[k] > top + .3) raw[k] = NaN;
+    const median = src => {
+      const out = new Float32Array(W * Hh).fill(NaN), win = [];
+      for (let i = 0; i < Hh; i++) for (let j = 0; j < W; j++) {
+        if (!inside[i * W + j]) continue; win.length = 0;
+        for (let di = -2; di <= 2; di++) for (let dj = -2; dj <= 2; dj++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= Hh || jj >= W) continue; const v = src[ii * W + jj]; if (!isNaN(v)) win.push(v); }
+        if (win.length >= 3) { win.sort((a, b) => a - b); out[i * W + j] = win[win.length >> 1]; }
+      }
+      return out;
+    };
+    // Végétation sous le faîtage : points qui s'écartent de la surface du toit
+    let filt = median(raw);
+    for (let k = 0; k < raw.length; k++) if (!isNaN(raw[k]) && Math.abs(raw[k] - filt[k]) > .8) raw[k] = NaN;
+    filt = median(raw);
+    // Zones écartées : comblées depuis le toit voisin
+    for (let pass = 0; pass < 40; pass++) {
+      let holes = 0; const nxt = filt.slice();
+      for (let i = 0; i < Hh; i++) for (let j = 0; j < W; j++) {
+        const k = i * W + j; if (!inside[k] || !isNaN(filt[k])) continue;
+        let s2 = 0, n = 0; for (const [di, dj] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= Hh || jj >= W) continue; const v = filt[ii * W + jj]; if (!isNaN(v)) { s2 += v; n++; } }
+        if (n) nxt[k] = s2 / n; else holes++;
+      }
+      filt = nxt; if (!holes) break;
+    }
+    for (let k = 0; k < filt.length; k++) if (!isNaN(filt[k])) filt[k] = clamp(filt[k], low, top);
+    return (x, z) => {
+      const [c, r] = lidar.toPix(...toLatLon(x, z)), cc = c - j0, rr = r - i0, j = Math.floor(cc), i = Math.floor(rr);
+      let s = 0, w = 0;
+      for (const [di, dj] of [[0, 0], [0, 1], [1, 0], [1, 1]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= Hh || jj >= W) continue; const v = filt[ii * W + jj]; if (isNaN(v)) continue; const wt = (1 - Math.abs(rr - ii)) * (1 - Math.abs(cc - jj)) + 1e-3; s += v * wt; w += wt; }
+      if (w) return s / w;
+      let best = null, bd = 1e9; // bord du bâtiment : pixel intérieur le plus proche
+      for (let ii = Math.max(0, i - 3); ii <= Math.min(Hh - 1, i + 4); ii++) for (let jj = Math.max(0, j - 3); jj <= Math.min(W - 1, j + 4); jj++) { const v = filt[ii * W + jj]; if (isNaN(v)) continue; const d = (ii - rr) ** 2 + (jj - cc) ** 2; if (d < bd) { bd = d; best = v; } }
+      return best ?? top;
+    };
+  }
+  // Toit à deux pentes selon l'axe long du bâtiment, avec les altitudes de toit de la BD TOPO
+  function gableRoof(ring, g0, props, hgt) {
+    let ridge = g0 + hgt, eave = g0 + Math.max(2.4, hgt * .62);
+    const aMax = +props.altitude_maximale_toit, aMin = +props.altitude_minimale_toit, aSol = +props.altitude_minimale_sol;
+    if (aMax && aMin && aSol && aMax > aMin) { ridge = g0 + clamp(aMax - aSol, 2.5, 30); eave = g0 + clamp(aMin - aSol, 2, ridge - g0 - .2); }
+    const cx = ring.reduce((a, p) => a + p.x, 0) / ring.length, cz = ring.reduce((a, p) => a + p.z, 0) / ring.length;
+    let sxx = 0, szz = 0, sxz = 0; for (const p of ring) { sxx += (p.x - cx) ** 2; szz += (p.z - cz) ** 2; sxz += (p.x - cx) * (p.z - cz); }
+    const th = .5 * Math.atan2(2 * sxz, sxx - szz), nx = -Math.sin(th), nz = Math.cos(th); // normale à l'axe long
+    const half = Math.max(...ring.map(p => Math.abs((p.x - cx) * nx + (p.z - cz) * nz))) || 1;
+    return (x, z) => eave + (ridge - eave) * Math.max(0, 1 - Math.abs((x - cx) * nx + (z - cz) * nz) / half);
+  }
   for (const b of buildings) {
-    const pts = b.rings[0].map(([la, lo]) => toLocal(la, lo)); if (pts.length < 4) continue;
-    if (pts.every(p => Math.abs(p.x) > S || Math.abs(p.z) > S)) continue;
-    const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(p.x, -p.z)));
-    for (const hole of b.rings.slice(1)) shape.holes.push(new THREE.Path(hole.map(([la, lo]) => toLocal(la, lo)).map(p => new THREE.Vector2(p.x, -p.z))));
-    const g0 = Math.min(...pts.map(p => groundAt(p.x, p.z)));
-    let hgt = b.height;
-    if (!hgt && lidar.mns) { const c = pts.reduce((a, p) => ({ x: a.x + p.x / pts.length, z: a.z + p.z / pts.length }), { x: 0, z: 0 }); hgt = lidar.sample(lidar.mns, ...toLatLon(c.x, c.z)) - base - g0; }
-    hgt = clamp(hgt || 6, 2.5, 30);
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: hgt + .4, bevelEnabled: false }); geo.rotateX(-Math.PI / 2); geo.translate(0, g0 - .4, 0);
-    const p = geo.attributes.position, uv = geo.attributes.uv;
-    for (let k = 0; k < p.count; k++) uv.setXY(k, ...uvOf(...toLatLon(p.getX(k), p.getZ(k))));
-    const m = new THREE.Mesh(geo, [roof, wall]); m.castShadow = m.receiveShadow = true; scene.add(m);
+    let ring = b.rings[0].map(([la, lo]) => toLocal(la, lo));
+    if (ring.length > 1 && Math.hypot(ring[0].x - ring.at(-1).x, ring[0].z - ring.at(-1).z) < 1e-3) ring = ring.slice(0, -1);
+    if (ring.length < 3 || ring.every(p => Math.abs(p.x) > S || Math.abs(p.z) > S)) continue;
+    const holes = b.rings.slice(1).map(h => h.map(([la, lo]) => toLocal(la, lo)));
+    const g0 = Math.min(...ring.map(p => groundAt(p.x, p.z)));
+    const hgt = clamp(b.height || 6, 2.5, 30);
+    let roofAt = lidar.mns ? lidarRoof(ring, g0, b.props || {}, b.height || 0) : null;
+    if (roofAt) nRoofLidar++; else roofAt = gableRoof(ring, g0, b.props || {}, hgt);
+    // Toit : emprise découpée en mailles de 1 m, chaque sommet à la hauteur du toit
+    const pos = [], xs = ring.map(p => p.x), zs = ring.map(p => p.z);
+    for (let x = Math.floor(Math.min(...xs)); x < Math.max(...xs); x++) for (let z = Math.floor(Math.min(...zs)); z < Math.max(...zs); z++) {
+      const piece = clipRect(ring, x, x + 1, z, z + 1); if (piece.length < 3) continue;
+      if (holes.some(h => pip(x + .5, z + .5, h))) continue;
+      for (const t of THREE.ShapeUtils.triangulateShape(piece.map(p => new THREE.Vector2(p.x, p.z)), [])) for (const k of t) { const p = piece[k]; pos.push(p.x, roofAt(p.x, p.z), p.z); }
+    }
+    if (!pos.length) continue;
+    let rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    rg = mergeVertices(rg, 1e-3); rg.computeVertexNormals();
+    const rp = rg.attributes.position, ruv = new Float32Array(rp.count * 2);
+    for (let k = 0; k < rp.count; k++) ruv.set(uvOf(...toLatLon(rp.getX(k), rp.getZ(k))), k * 2);
+    rg.setAttribute('uv', new THREE.BufferAttribute(ruv, 2));
+    const roof = new THREE.Mesh(rg, roofMat); roof.castShadow = roof.receiveShadow = true; scene.add(roof);
+    // Murs : chaque côté découpé tous les mètres et monté jusqu'au toit (pignons compris)
+    const wp = [], yb = g0 - .4;
+    for (const r of [ring, ...holes]) for (let e = 0; e < r.length; e++) {
+      const a = r[e], c = r[(e + 1) % r.length], n = Math.max(1, Math.ceil(Math.hypot(c.x - a.x, c.z - a.z)));
+      for (let k = 0; k < n; k++) {
+        const p = { x: a.x + (c.x - a.x) * k / n, z: a.z + (c.z - a.z) * k / n }, q = { x: a.x + (c.x - a.x) * (k + 1) / n, z: a.z + (c.z - a.z) * (k + 1) / n };
+        const hp = roofAt(p.x, p.z), hq = roofAt(q.x, q.z);
+        wp.push(p.x, yb, p.z, q.x, yb, q.z, q.x, hq, q.z, p.x, yb, p.z, q.x, hq, q.z, p.x, hp, p.z);
+      }
+    }
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); wg.computeVertexNormals();
+    const walls = new THREE.Mesh(wg, wallMat); walls.castShadow = walls.receiveShadow = true; scene.add(walls);
   }
 }
 
@@ -544,6 +650,8 @@ function loop() {
 }
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 setMode('orbit', true);
+// Cadrage programmable (vérifications automatiques) : cible lat/lon, distance, azimut et élévation en degrés
+window.__view = (lat, lon, dist = 60, az = 30, el = 35) => { const t = toLocal(lat, lon), y = groundAt(t.x, t.z), a = az * Math.PI / 180, e = el * Math.PI / 180; orbit.target.set(t.x, y, t.z); camera.position.set(t.x + dist * Math.cos(e) * Math.sin(a), y + dist * Math.sin(e), t.z + dist * Math.cos(e) * Math.cos(a)); orbit.update(); };
 progress('Prêt', 1); $('#loading').classList.add('hidden');
 loop();
 } catch (e) {
