@@ -124,7 +124,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadLidar, fetchBuildings, fetchWater, fetchSports, inBuildings, inPolygon, merc } from './lidar.js';
 import { facadeTexture, buildTerrace, buildEave, BAY, FACADE_H } from './house.js';
-import { buildDetailedTree, photoFoliageColor, photoBarkTexture } from './trees3d.js';
+import { buildDetailedTree, treePrototype, photoFoliageColor, photoBarkTexture } from './trees3d.js';
 
 const D = window.RoybonData, $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -827,32 +827,55 @@ if (lidar.chm) {
     minHeight: 3,
     exclude: (la, lo) => { if (Math.abs(la - lat0) * mLat > S || Math.abs(lo - lon0) * mLon > S) return true; if (inBuildings(la, lo, buildings, dLat)) return true;
       { const q = toLocal(la, lo); if (courts.some(C => { const [u, v] = C.toCourt(q.x, q.z); return Math.abs(u) < C.L / 2 + .5 && Math.abs(v) < C.W / 2 + .5; })) return true; if (lakeDepthAt(q.x, q.z) > 1.2) return true; const ns = nearestStream(q.x, q.z); if (ns && ns.d < ns.w * .4) return true; }
-      return trees.some(t => Math.hypot((t.lat - la) * mLat, (t.lon - lo) * mLon) < 3) || lidarTops.some(m => Math.hypot((m.lat - la) * mLat, (m.lon - lo) * mLon) < Math.max(2.5, m.radius * .6)); },
+      return surveyed.some(s => Math.hypot((s.t.lat - la) * mLat, (s.t.lon - lo) * mLon) < Math.max(3.5, s.rad * .9)) || lidarTops.some(m => Math.hypot((m.lat - la) * mLat, (m.lon - lo) * mLon) < Math.max(3.5, m.radius * .9)); },
     max: isTouch ? 1200 : 2500,
   });
   nOthers = detected.length;
-  const VAR = 4, groups = { round: [], conifer: [] };
-  for (const d of detected) (d.radius / d.height < .2 && d.height > 8 ? groups.conifer : groups.round).push(d);
+  // Proches (le parc) : arbres réalistes instanciés ; au loin : volumes simples
+  const NEAR = 170, nearMax = isTouch ? 300 : 800, near = [], far = [];
+  for (const d of detected) { const p = toLocal(d.lat, d.lon); (Math.hypot(p.x, p.z) < NEAR && near.length < nearMax ? near : far).push(d); }
+  const isConifer = d => d.radius / d.height < .2 && d.height > 8;
   const dummy = new THREE.Object3D(), c = new THREE.Color();
-  const trunkTpl = new THREE.CylinderGeometry(.55, 1, 1, 7).translate(0, .5, 0);
-  const trunkI = new THREE.InstancedMesh(trunkTpl, barkMat, detected.length); trunkI.castShadow = true; let ti = 0;
-  for (const shape of ['round', 'conifer']) {
-    const list = groups[shape];
-    for (let v = 0; v < VAR; v++) {
-      const sub = list.filter((_, k) => k % VAR === v); if (!sub.length) continue;
-      const geo = crownGeometry(shape, `var${shape}${v}`, '#ffffff', 1);
-      const im = new THREE.InstancedMesh(geo, crownMat, sub.length); im.castShadow = true;
+  const PROTOS = { conifer: [['spruce', 'needle', 'plates', '#2c4a2a'], ['fir', 'needle', 'plates', '#34522f']],
+    round: [['broad', 'lobed', 'furrowed', '#5a7d38'], ['broad', 'round', 'ridged', '#5f8a3d'], ['ovoid', 'lanceolate', 'furrowed', '#56803a']] };
+  for (const kind of ['round', 'conifer']) {
+    const list = near.filter(d => isConifer(d) === (kind === 'conifer')), protos = PROTOS[kind];
+    protos.forEach(([form, leaf, bark, color], v) => {
+      const sub = list.filter((_, k) => k % protos.length === v); if (!sub.length) return;
+      const P = treePrototype({ form, leaf, bark, color, seed: `proto${kind}${v}`, U, renderer, lite: true });
+      const [ti, li] = P.instanced(sub.length);
       sub.forEach((d, k) => {
-        const p = toLocal(d.lat, d.lon), g0 = groundAt(p.x, p.z) - .15, cb = d.height * (shape === 'conifer' ? .08 : .32), rad = clamp(d.radius, 1, 12);
-        const r = rndOf(`${d.lat}${d.lon}`);
-        dummy.position.set(p.x, g0 + cb, p.z); dummy.rotation.set(0, r() * 6.28, 0); dummy.scale.set(rad, d.height - cb, rad); dummy.updateMatrix(); im.setMatrixAt(k, dummy.matrix);
-        c.set(shape === 'conifer' ? '#2f5230' : '#557d3c').offsetHSL((r() - .5) * .04, (r() - .5) * .1, (r() - .5) * .06); im.setColorAt(k, c);
-        const tr = clamp(.08 + d.height * .014, .1, .6); dummy.position.set(p.x, g0, p.z); dummy.scale.set(tr, cb + (d.height - cb) * .4, tr); dummy.updateMatrix(); trunkI.setMatrixAt(ti++, dummy.matrix);
+        const p = toLocal(d.lat, d.lon), r = rndOf(`${d.lat}${d.lon}`), sy = d.height / P.H0, sxz = clamp(clamp(d.radius, 1, 12) / P.rad0, sy * .6, sy * 1.6);
+        dummy.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); dummy.rotation.set(0, r() * 6.28, 0); dummy.scale.set(sxz, sy, sxz); dummy.updateMatrix();
+        ti.setMatrixAt(k, dummy.matrix); li.setMatrixAt(k, dummy.matrix);
+        c.setRGB(1, 1, 1).offsetHSL((r() - .5) * .04, 0, (r() - .5) * .12); li.setColorAt(k, c);
       });
-      im.instanceColor.needsUpdate = true; others.add(im);
-    }
+      li.instanceColor.needsUpdate = true; others.add(ti, li);
+    });
   }
-  trunkI.count = ti; others.add(trunkI);
+  if (far.length) {
+    const VAR = 4, groups = { round: [], conifer: [] };
+    for (const d of far) (isConifer(d) ? groups.conifer : groups.round).push(d);
+    const trunkTpl = new THREE.CylinderGeometry(.55, 1, 1, 7).translate(0, .5, 0);
+    const trunkI = new THREE.InstancedMesh(trunkTpl, barkMat, far.length); trunkI.castShadow = true; let ti = 0;
+    for (const shape of ['round', 'conifer']) {
+      const list = groups[shape];
+      for (let v = 0; v < VAR; v++) {
+        const sub = list.filter((_, k) => k % VAR === v); if (!sub.length) continue;
+        const geo = crownGeometry(shape, `var${shape}${v}`, '#ffffff', 1);
+        const im = new THREE.InstancedMesh(geo, crownMat, sub.length); im.castShadow = true;
+        sub.forEach((d, k) => {
+          const p = toLocal(d.lat, d.lon), g0 = groundAt(p.x, p.z) - .15, cb = d.height * (shape === 'conifer' ? .08 : .32), rad = clamp(d.radius, 1, 12);
+          const r = rndOf(`${d.lat}${d.lon}`);
+          dummy.position.set(p.x, g0 + cb, p.z); dummy.rotation.set(0, r() * 6.28, 0); dummy.scale.set(rad, d.height - cb, rad); dummy.updateMatrix(); im.setMatrixAt(k, dummy.matrix);
+          c.set(shape === 'conifer' ? '#2f5230' : '#557d3c').offsetHSL((r() - .5) * .04, (r() - .5) * .1, (r() - .5) * .06); im.setColorAt(k, c);
+          const tr = clamp(.08 + d.height * .014, .1, .6); dummy.position.set(p.x, g0, p.z); dummy.scale.set(tr, cb + (d.height - cb) * .4, tr); dummy.updateMatrix(); trunkI.setMatrixAt(ti++, dummy.matrix);
+        });
+        im.instanceColor.needsUpdate = true; others.add(im);
+      }
+    }
+    trunkI.count = ti; others.add(trunkI);
+  }
 }
 const measuredN = surveyed.filter(s => s.measured).length;
 $('#sub').innerHTML = `${trees.length} arbres recensés${lidar.chm ? ` · ${measuredN} mesurés au LiDAR` : ''}${nOthers ? `<br>${nOthers} autres arbres détectés par LiDAR` : ''}`;

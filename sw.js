@@ -2,7 +2,7 @@
    - Fichiers de l'app : réseau d'abord (toujours la dernière version), cache si pas de réseau.
    - Bibliothèques versionnées (CDN) : cache d'abord.
    - Tuiles de carte IGN : réseau d'abord, cache pour le terrain sans réseau. */
-const VERSION = 'v21';
+const VERSION = 'v22';
 const APP = 'app-' + VERSION, LIBS = 'libs', TILES = 'tiles';
 const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg', './data.js', './lidar.js', './house.js', './trees3d.js', './plan.html', './3d.html', ...['leaf_oak.png', 'leaf_ash.png', 'leaf_round.png', 'leaf_pine.png', ...['oak', 'pine', 'birch', 'willow'].flatMap(b => [`bark_${b}_color.jpg`, `bark_${b}_normal.jpg`])].map(f => './tex/' + f)];
 const CDN = [

@@ -81,8 +81,12 @@ function windify(mat, U, amp) {
   mat.onBeforeCompile = sh => {
     sh.uniforms.uTime = U.time;
     sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-      vec3 wp = vec3(modelMatrix[3]); float ph = wp.x * .21 + wp.z * .17;
-      float sw = (sin(uTime * 1.3 + ph) * .6 + sin(uTime * 2.1 + ph * 1.7) * .4) * ${amp.toFixed(4)} * max(0., transformed.y);
+      vec3 wp = vec3(modelMatrix[3]); float wsc = 1.;
+      #ifdef USE_INSTANCING
+        wp += vec3(instanceMatrix[3]); wsc = length(instanceMatrix[1].xyz);
+      #endif
+      float ph = wp.x * .21 + wp.z * .17;
+      float sw = (sin(uTime * 1.3 + ph) * .6 + sin(uTime * 2.1 + ph * 1.7) * .4) * ${amp.toFixed(4)} * max(0., transformed.y) * wsc;
       float fl = sin(uTime * 7. + position.x * 3.1 + position.z * 2.3) * .025;
       transformed.x += sw + fl; transformed.z += sw * .6 + fl;`);
     sh.fragmentShader = sh.fragmentShader.replace('float faceDirection = gl_FrontFacing ? 1.0 : - 1.0;', 'float faceDirection = 1.0;');
@@ -106,10 +110,10 @@ const FORMS = {
   dense: P({ angle: [0, 40, 62, 60], children: [10, 4, 3], length: [3, 15, 6, 4.6], radius: [.9, .9, .76, .7], sections: [6, 6, 8, 5], segments: [6, 4, 4, 3], start: [0, .2, .2, 0], taper: [.7, .7, .7, .7], twist: [.3, -.07, 0, 0], gnarl: [.08, .09, .05, .09], force: -.012, leaves: { angle: 55, count: 16, start: 0, size: 2.8, var: .5 }, trunkR: .03 }),
   columnar: P({ levels: 2, angle: [0, 18, 30], children: [34, 5], length: [60, 16, 7], radius: [1.2, .5, .7], sections: [14, 6, 4], segments: [8, 4, 3], start: [0, .12, .1], taper: [.7, .6, .7], twist: [0, 0, 0], gnarl: [.02, .05, .05], force: .03, leaves: { angle: 30, count: 12, start: .05, size: 3.2, var: .5 }, trunkR: .02 }),
   columnarEver: P({ type: 'evergreen', levels: 1, angle: [0, 35], children: [90], length: [55, 11], radius: [1.1, .45], sections: [14, 6], segments: [8, 4], start: [0, .05], taper: [.7, .7], twist: [0, 0], gnarl: [.02, .06], force: .02, leaves: { angle: 30, count: 14, start: .05, size: 2.6, var: .3 }, trunkR: .02 }),
-  spruce: P({ type: 'evergreen', levels: 1, angle: [0, 118], children: [110], length: [65, 30], radius: [1.27, .37], sections: [14, 10], segments: [8, 5], start: [0, .12], taper: [.7, .7], twist: [0, 0], gnarl: [.04, .08], force: .006, leaves: { angle: 20, count: 18, start: .08, size: 2.6, var: .2 }, trunkR: .015 }),
-  fir: P({ type: 'evergreen', levels: 1, angle: [0, 96], children: [95], length: [60, 26], radius: [1.2, .36], sections: [14, 10], segments: [8, 5], start: [0, .12], taper: [.7, .7], twist: [0, 0], gnarl: [.03, .06], force: .004, leaves: { angle: 30, count: 20, start: .08, size: 2.4, var: .2 }, trunkR: .016 }),
+  spruce: P({ type: 'evergreen', levels: 2, angle: [0, 112, 55], children: [150, 4], length: [65, 32, 9], radius: [1.27, .37, .5], sections: [16, 10, 4], segments: [8, 5, 3], start: [0, .06, .15], taper: [.7, .7, .7], twist: [0, 0, 0], gnarl: [.04, .08, .08], force: .006, leaves: { angle: 25, count: 14, start: .05, size: 3.4, var: .25 }, trunkR: .015 }),
+  fir: P({ type: 'evergreen', levels: 2, angle: [0, 95, 50], children: [130, 4], length: [60, 27, 8], radius: [1.2, .36, .5], sections: [16, 10, 4], segments: [8, 5, 3], start: [0, .06, .15], taper: [.7, .7, .7], twist: [0, 0, 0], gnarl: [.03, .06, .08], force: .004, leaves: { angle: 30, count: 14, start: .05, size: 3.2, var: .25 }, trunkR: .016 }),
   pine: P({ type: 'evergreen', levels: 2, angle: [0, 62, 40], children: [22, 5], length: [55, 30, 9], radius: [1.3, .45, .6], sections: [14, 8, 5], segments: [8, 5, 3], start: [0, .58, .2], taper: [.7, .7, .7], twist: [0, .1, 0], gnarl: [.06, .12, .1], force: .015, leaves: { angle: 35, count: 16, start: .2, size: 3.4, var: .3 }, trunkR: .02 }),
-  cedar: P({ type: 'evergreen', levels: 2, angle: [0, 92, 65], children: [26, 7], length: [55, 42, 11], radius: [1.8, .45, .6], sections: [14, 8, 5], segments: [10, 5, 3], start: [0, .18, .1], taper: [.7, .7, .7], twist: [0, .15, 0], gnarl: [.04, .06, .08], force: .004, leaves: { angle: 70, count: 14, start: .05, size: 3.6, var: .3 }, trunkR: .028 }),
+  cedar: P({ type: 'evergreen', levels: 2, angle: [0, 88, 70], children: [44, 12], length: [55, 44, 13], radius: [1.8, .45, .6], sections: [16, 8, 5], segments: [10, 5, 3], start: [0, .12, .05], taper: [.7, .7, .7], twist: [0, .15, 0], gnarl: [.04, .06, .08], force: .003, leaves: { angle: 75, count: 22, start: .02, size: 4.4, var: .3 }, trunkR: .028 }),
 };
 
 // ---------- Générateur (d'après EZ-Tree) ----------
@@ -195,7 +199,7 @@ function crownNormals(lg, center, ry) {
 }
 
 // ---------- Arbre complet ----------
-export function buildDetailedTree({ tr, h, rad, seed, U, renderer, lite = false }) {
+function makeTree({ tr, h, rad, seed, U, renderer, lite = false }) {
   let form = tr.form || 'broad';
   if (form === 'columnar' && (tr.leaf === 'scale' || tr.leaf === 'needle')) form = 'columnarEver';
   const o = FORMS[form] || FORMS.broad, leafKind = LEAF[tr.leaf] ? tr.leaf : (o.type === 'evergreen' ? 'needle' : 'ovate');
@@ -209,27 +213,47 @@ export function buildDetailedTree({ tr, h, rad, seed, U, renderer, lite = false 
   const halfW = Math.max((bb.max.x - bb.min.x), (bb.max.z - bb.min.z)) / 2 * s, kx = clamp(rad / Math.max(halfW, .1), .7, 1.4);
   const cx = (bb.max.x + bb.min.x) / 2, cz = (bb.max.z + bb.min.z) / 2;
   const M = new THREE.Matrix4().makeScale(s * kx, s, s * kx).multiply(new THREE.Matrix4().makeTranslation(-cx * .6, 0, -cz * .6));
-  bg.applyMatrix4(M); lg.applyMatrix4(M); lg.computeBoundingBox();
+  bg.applyMatrix4(M); lg.applyMatrix4(M); lg.computeBoundingBox(); bg.computeBoundingSphere(); lg.computeBoundingSphere();
   const lb = lg.boundingBox, center = new THREE.Vector3((lb.min.x + lb.max.x) / 2, (lb.min.y + lb.max.y) / 2, (lb.min.z + lb.max.z) / 2);
   crownNormals(lg, center, (lb.max.y - lb.min.y) / 2);
 
-  const group = new THREE.Group();
   const bk = BARK[tr.bark], rep = tr.bark === 'birch' ? 1 : 2;
-  const barkMat = new THREE.MeshStandardMaterial({ roughness: .95, color: 0xffffff });
+  const barkMat = new THREE.MeshStandardMaterial({ roughness: .95, color: 0xffffff }); // tronc et branches fixes
   if (bk) { barkMat.map = tex(`bark_${bk}_color.jpg`, true, renderer); barkMat.normalMap = tex(`bark_${bk}_normal.jpg`, false, renderer); barkMat.normalScale.set(1.2, 1.2); }
   else { barkMat.map = barkTexture(tr.bark || 'smooth', renderer); barkMat.normalMap = tex('bark_oak_normal.jpg', false, renderer); barkMat.normalScale.set(.35, .35); }
   barkMat.map.repeat.set(rep, rep);
-  const trunk = new THREE.Mesh(bg, windify(barkMat, U, .006)); trunk.castShadow = true; trunk.receiveShadow = true; group.add(trunk);
 
   const [file, avg] = LEAF[leafKind], leafMap = tex(file, true, renderer), texAvg = new THREE.Color(avg);
   const tintFor = (c, k) => { const t = new THREE.Color(1, 1, 1); if (!c) return t; const r = ['r', 'g', 'b'].map(ch => clamp(c[ch] / Math.max(texAvg[ch], .01), .45, 1.9)); return t.setRGB(...r.map(x => 1 + (x - 1) * k)); };
-  const leafMat = windify(new THREE.MeshStandardMaterial({ map: leafMap, color: tintFor(new THREE.Color(tr.color), .45), vertexColors: true, alphaTest: .5, side: THREE.DoubleSide, roughness: .85 }), U, .012);
-  const leaves = new THREE.Mesh(lg, leafMat); leaves.castShadow = true; leaves.receiveShadow = true;
-  leaves.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafMap, alphaTest: .5 });
+  const leafMat = windify(new THREE.MeshStandardMaterial({ map: leafMap, color: tintFor(new THREE.Color(tr.color), .45), vertexColors: true, alphaTest: .5, side: THREE.DoubleSide, roughness: .85 }), U, .006);
+  const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafMap, alphaTest: .5 });
+  return { bg, lg, barkMat, leafMat, depthMat, tintFor };
+}
+
+export function buildDetailedTree(opts) {
+  const { bg, lg, barkMat, leafMat, depthMat, tintFor } = makeTree(opts);
+  const group = new THREE.Group();
+  const trunk = new THREE.Mesh(bg, barkMat); trunk.castShadow = true; trunk.receiveShadow = true; group.add(trunk);
+  const leaves = new THREE.Mesh(lg, leafMat); leaves.castShadow = true; leaves.receiveShadow = true; leaves.customDepthMaterial = depthMat;
   group.add(leaves);
   return {
     group, leafMat, barkMat,
     setFoliageColor(c) { leafMat.color.copy(tintFor(c, .8)); },
     setBark(t) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.repeat.set(1.5, 1.5); barkMat.map = t; barkMat.normalScale.set(.6, .6); barkMat.needsUpdate = true; },
+  };
+}
+
+/* Modèle d'arbre générique à instancier (arbres non recensés détectés au LiDAR).
+   Construit pour une hauteur H0 et un rayon rad0 ; renvoie { H0, rad0, instanced(n) → [troncs, feuillage] }. */
+export function treePrototype({ form, leaf, bark, color, seed, U, renderer, lite = true }) {
+  const H0 = 15, rad0 = form === 'spruce' || form === 'fir' ? 3 : 5;
+  const { bg, lg, barkMat, leafMat, depthMat } = makeTree({ tr: { form, leaf, bark, color }, h: H0, rad: rad0, seed, U, renderer, lite });
+  return {
+    H0, rad0,
+    instanced(n) {
+      const t = new THREE.InstancedMesh(bg, barkMat, n), l = new THREE.InstancedMesh(lg, leafMat, n);
+      t.castShadow = l.castShadow = true; t.receiveShadow = l.receiveShadow = true; l.customDepthMaterial = depthMat;
+      return [t, l];
+    },
   };
 }
