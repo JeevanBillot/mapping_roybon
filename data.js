@@ -81,12 +81,30 @@ window.RoybonData = (() => {
     Ginkgo: ['slender', 20, 4, '#9bbf55'], Liriodendron: ['round', 25, 6, '#76a24c'],
   };
   const COMMON = [[/chêne/i, 'Quercus'], [/hêtre/i, 'Fagus'], [/charme/i, 'Carpinus'], [/châtaign/i, 'Castanea'], [/érable/i, 'Acer'], [/tilleul/i, 'Tilia'], [/frêne/i, 'Fraxinus'], [/orme/i, 'Ulmus'], [/platane/i, 'Platanus'], [/noyer/i, 'Juglans'], [/marronnier/i, 'Aesculus'], [/robinier|acacia/i, 'Robinia'], [/cerisier|prunier|merisier|laurier-cerise/i, 'Prunus'], [/pommier/i, 'Malus'], [/poirier/i, 'Pyrus'], [/sorbier/i, 'Sorbus'], [/noisetier/i, 'Corylus'], [/sureau/i, 'Sambucus'], [/houx/i, 'Ilex'], [/buis/i, 'Buxus'], [/laurier/i, 'Laurus'], [/magnolia/i, 'Magnolia'], [/aulne/i, 'Alnus'], [/bouleau/i, 'Betula'], [/peuplier/i, 'Populus'], [/cyprès/i, 'Cupressus'], [/saule/i, 'Salix'], [/(^|\s)pin(\s|$)/i, 'Pinus'], [/sapin/i, 'Abies'], [/épicéa/i, 'Picea'], [/cèdre/i, 'Cedrus'], [/mélèze/i, 'Larix'], [/douglas/i, 'Pseudotsuga'], [/séquoia/i, 'Sequoiadendron'], [/thuya/i, 'Thuja'], [/if\b/i, 'Taxus'], [/genévrier/i, 'Juniperus'], [/ginkgo/i, 'Ginkgo'], [/tulipier/i, 'Liriodendron']];
+  // Port détaillé, type de feuille et d'écorce par genre (rendu 3D détaillé)
+  const DETAIL = {
+    Quercus: ['broad', 'lobed', 'furrowed'], Fagus: ['broad', 'ovate', 'smooth'], Carpinus: ['broad', 'ovate', 'smooth'], Castanea: ['broad', 'lanceolate', 'furrowed'],
+    Acer: ['broad', 'palmate', 'plates'], Tilia: ['ovoid', 'cordate', 'ridged'], Fraxinus: ['broad', 'lanceolate', 'ridged'], Ulmus: ['broad', 'ovate', 'furrowed'],
+    Platanus: ['broad', 'palmate', 'plates'], Juglans: ['broad', 'lanceolate', 'furrowed'], Aesculus: ['ovoid', 'palmate', 'plates'], Robinia: ['broad', 'round', 'furrowed'],
+    Prunus: ['broad', 'ovate', 'smooth'], Malus: ['broad', 'ovate', 'plates'], Pyrus: ['ovoid', 'ovate', 'plates'], Sorbus: ['ovoid', 'lanceolate', 'smooth'],
+    Corylus: ['multistem', 'round', 'smooth'], Sambucus: ['multistem', 'lanceolate', 'furrowed'], Ilex: ['dense', 'ovate', 'smooth'], Buxus: ['dense', 'round', 'smooth'], Laurus: ['dense', 'lanceolate', 'smooth'],
+    Magnolia: ['ovoid', 'ovate', 'smooth'], Alnus: ['ovoid', 'round', 'furrowed'], Catalpa: ['broad', 'cordate', 'plates'], Morus: ['broad', 'cordate', 'furrowed'], Ficus: ['multistem', 'palmate', 'smooth'],
+    Betula: ['birch', 'round', 'birch'], Populus: ['columnar', 'cordate', 'furrowed'], Cupressus: ['columnar', 'scale', 'fibrous'], Salix: ['weeping', 'lanceolate', 'furrowed'],
+    Pinus: ['pine', 'needle', 'plates'], Abies: ['fir', 'needle', 'smooth'], Picea: ['spruce', 'needle', 'plates'], Cedrus: ['cedar', 'scale', 'furrowed'], Larix: ['fir', 'needle', 'furrowed'],
+    Pseudotsuga: ['fir', 'needle', 'furrowed'], Sequoiadendron: ['fir', 'scale', 'fibrous'], Sequoia: ['fir', 'scale', 'fibrous'], Thuja: ['columnar', 'scale', 'fibrous'], Chamaecyparis: ['fir', 'scale', 'fibrous'],
+    Taxus: ['dense', 'needle', 'fibrous'], Juniperus: ['columnar', 'scale', 'fibrous'], Ginkgo: ['ginkgo', 'fan', 'furrowed'], Liriodendron: ['ovoid', 'palmate', 'ridged'],
+  };
+  const SPECIES_DETAIL = { 'Prunus lusitanica': ['dense', 'lanceolate', 'smooth', 8, 3.5, '#2f5a2c'], 'Prunus laurocerasus': ['dense', 'lanceolate', 'smooth', 6, 3.5, '#2e5a2a'], 'Cedrus libani': ['cedar', 'scale', 'furrowed', 25, 8, '#40604a'], 'Picea orientalis': ['spruce', 'needle', 'plates', 30, 3.5, '#223f26'] };
   function traits(t) {
-    let g = ((t.species && t.species.sci) || '').split(/\s+/)[0];
+    const sci = ((t.species && t.species.sci) || '').trim();
+    let g = sci.split(/\s+/)[0];
     if (!GENUS[g]) { const c = name(t); const m = COMMON.find(([re]) => re.test(c)); g = m ? m[1] : ''; }
-    const [shape, height, crown, color] = GENUS[g] || ['round', 12, 4, '#5f8a3d'];
+    let [shape, height, crown, color] = GENUS[g] || ['round', 12, 4, '#5f8a3d'];
+    let [form, leaf, bark] = DETAIL[g] || ['broad', 'ovate', 'furrowed'];
+    const sp = SPECIES_DETAIL[sci.split(/\s+/).slice(0, 2).join(' ')];
+    if (sp) { [form, leaf, bark] = sp; [height, crown, color] = sp.slice(3); if (form === 'dense') shape = 'shrub'; }
     const h = +(t.height || 0) || height; // hauteur mesurée si disponible
-    return { genus: g || null, shape, height: h, crown: crown * (h / height), color };
+    return { genus: g || null, shape, height: h, crown: crown * (h / height), color, form, leaf, bark };
   }
   return { cfg, DEFAULT_CENTER, loadTrees, saveFeature, deleteFeature, photoURL, photoIds, name, colorFor, traits };
 })();

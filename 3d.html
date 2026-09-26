@@ -124,6 +124,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadLidar, fetchBuildings, fetchWater, fetchSports, inBuildings, inPolygon, merc } from './lidar.js';
 import { facadeTexture, buildTerrace, buildEave, BAY, FACADE_H } from './house.js';
+import { buildDetailedTree, photoFoliageColor, photoBarkTexture } from './trees3d.js';
 
 const D = window.RoybonData, $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -799,12 +800,22 @@ for (const s of surveyed) {
   const { t, tr } = s, r = rndOf(t.id), shape = tr.shape;
   const h = s.h, cb = h * CROWN_BASE[shape], ch = h - cb;
   const g = new THREE.Group(); g.userData.s = s;
-  const crown = new THREE.Mesh(crownGeometry(shape, t.id, tr.color), crownMat);
-  crown.scale.set(s.rad, ch, s.rad); crown.position.y = cb; crown.castShadow = true; g.add(crown);
-  const trunk = new THREE.Mesh(trunkGeometry(h, cb, clamp(.08 + h * .014, .1, .7), shape, r), shape === 'slender' ? birchMat : barkMat); trunk.castShadow = true; g.add(trunk);
+  // Arbre détaillé : silhouette et feuillage de l'espèce ; couleur et écorce reprises des photos si disponibles
+  const det = buildDetailedTree({ tr, h, rad: s.rad, seed: t.id, U, renderer, lite: isTouch || surveyed.length > 120 });
+  g.add(det.group); s.det = det;
   const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); g.rotation.y = r() * 6.28;
   scene.add(g); pickables.push(g); labelled.push({ s, pos: new THREE.Vector3(p.x, g.position.y + h + .8, p.z) });
 }
+
+// Couleurs et écorces tirées des photos du terrain (chargées en arrière-plan)
+(async () => {
+  for (const s of surveyed) {
+    const organs = s.t.organs || [], id = o => `${s.t.id}_${o}`;
+    const colorSrc = organs.includes('leaf') ? 'leaf' : organs.includes('habit') ? 'habit' : null;
+    if (colorSrc) { const u = await D.photoURL(id(colorSrc)); if (u) { const c = await photoFoliageColor(u); if (c) s.det.setFoliageColor(c); } }
+    if (organs.includes('bark')) { const u = await D.photoURL(id('bark')); if (u) { const tx = await photoBarkTexture(u, renderer); if (tx) s.det.setBark(tx); } }
+  }
+})();
 
 // Arbres non recensés, détectés dans le LiDAR (instanciés)
 progress('Détection des autres arbres…', .82);
