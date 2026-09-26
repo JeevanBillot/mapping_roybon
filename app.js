@@ -63,7 +63,7 @@ function setStep(n) { $$('.stepper li').forEach(li => { const s = +li.dataset.st
 // ---------- État de saisie ----------
 let current = null, miniMap = null, miniMarker = null, gpsAbort = null;
 function resetCapture() {
-  current = null; setStep(1);
+  current = null; setStep(1); setTimeout(reloadIfIdle, 300);
   show($('#step-gps')); show($('#gps-card')); show($('#gps-status'), false); show($('#pos-card'), false); show($('#btn-gps'));
   show($('#step-photos'), false); show($('#step-save'), false); show($('#btn-cancel'), false);
   $$('.photo-slot').forEach(s => { s.classList.remove('filled'); s.querySelector('img').src = ''; s.querySelector('input').value = ''; });
@@ -289,7 +289,12 @@ $('#btn-save').addEventListener('click', async () => {
   haptic(); toast(`${speciesName(tree)} enregistré`);
   resetCapture(); updateCount(); sync();
 });
-async function updateCount() { const trees = await getAll('trees'); $('#count').textContent = trees.length; const n = trees.filter(t => !t.synced).length; $('#sync-text').textContent = settings.proxyUrl ? (n ? `${n} à envoyer` : 'à jour') : 'hors ligne'; $('#sync-icon').innerHTML = ico(!settings.proxyUrl ? 'cloud-off' : n ? 'cloud-up' : 'cloud-ok'); }
+async function updateCount() {
+  const trees = await getAll('trees'); $('#count').textContent = trees.length; const n = trees.filter(t => !t.synced).length;
+  const state = !settings.proxyUrl ? ['cloud-off', 'non configuré'] : !navigator.onLine ? ['cloud-off', 'hors ligne'] : n ? ['cloud-up', `${n} à envoyer`] : ['cloud-ok', 'à jour'];
+  $('#sync-icon').innerHTML = ico(state[0]); $('#sync-text').textContent = state[1];
+  show($('#setup-banner'), !settings.proxyUrl);
+}
 
 // ---------- Synchronisation ----------
 let syncing = false;
@@ -316,9 +321,10 @@ async function sync(full = false) {
   if ($('#view-list').classList.contains('active')) renderList();
   if ($('#view-map').classList.contains('active')) renderMap();
 }
-$('#sync-btn').addEventListener('click', () => sync(true));
+$('#sync-btn').addEventListener('click', () => settings.proxyUrl ? sync(true) : switchView('settings'));
+$('#btn-setup').addEventListener('click', () => switchView('settings'));
 $('#btn-sync-full').addEventListener('click', () => sync(true));
-window.addEventListener('online', () => sync());
+window.addEventListener('online', () => { updateCount(); sync(); }); window.addEventListener('offline', updateCount);
 
 // ---------- Liste ----------
 $('#search').addEventListener('input', renderList);
@@ -395,11 +401,27 @@ $('#btn-export').addEventListener('click', async () => {
 $('#btn-save-settings').addEventListener('click', () => { settings.proxyUrl = $('#proxy-url').value.trim(); settings.appToken = $('#app-token').value.trim(); settings.gpsTarget = +$('#gps-target').value || 5; settings.gpsMaxWait = +$('#gps-maxwait').value || 10; renderGpsLive(); toast('Réglages enregistrés'); switchView('capture'); sync(true); });
 $('#btn-wipe').addEventListener('click', async () => { if (!confirm('Effacer les données de ce téléphone ? Le cloud n\'est pas touché.')) return; await tx('trees', 'readwrite', s => s.clear()); await tx('photos', 'readwrite', s => s.clear()); updateCount(); toast('Données locales effacées'); });
 
+// ---------- Mises à jour automatiques ----------
+let reloadPending = false;
+function reloadIfIdle() { if (reloadPending && !current) location.reload(); }
+function setupUpdates() {
+  if (!('serviceWorker' in navigator)) return;
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+    setInterval(check, 15 * 60 * 1000);
+  }).catch(() => {});
+  // Nouvelle version active : on recharge, mais jamais au milieu de la saisie d'un arbre
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController) return; reloadPending = true; if (current) toast('Nouvelle version prête : elle s\'appliquera après cet arbre', 3500); reloadIfIdle(); });
+}
+
 // ---------- Init ----------
 (async () => {
   await openDB();
   $('#proxy-url').value = settings.proxyUrl; $('#app-token').value = settings.appToken; $('#gps-target').value = settings.gpsTarget; $('#gps-maxwait').value = settings.gpsMaxWait;
   updateCount(); resetCapture(); startWatch(); renderGpsLive();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  setupUpdates();
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if (!settings.proxyUrl) { toast('Commence par les Réglages : URL du relais et mot de passe', 4000); } else sync();
 })();
