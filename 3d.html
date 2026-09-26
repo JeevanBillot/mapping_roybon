@@ -120,6 +120,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadLidar, fetchBuildings, fetchWater, inBuildings, merc } from './lidar.js';
 
@@ -208,6 +209,16 @@ function nearestStream(x, z) {
   return best;
 }
 const smooth01 = t => t * t * (3 - 2 * t);
+// Distance au rivage si le point est dans un plan d'eau, sinon -1
+function lakeDepthAt(x, z) {
+  let best = -1;
+  for (const L of lakes) {
+    if (x < L.bb[0] || x > L.bb[1] || z < L.bb[2] || z > L.bb[3] || !pipL(x, z, L.ring)) continue;
+    let d = Infinity; for (let i = 0; i < L.ring.length; i++) d = Math.min(d, segDist(x, z, L.ring[i], L.ring[(i + 1) % L.ring.length])[0]);
+    best = Math.max(best, d);
+  }
+  return best;
+}
 function carve(x, z, y) {
   for (const L of lakes) {
     if (x < L.bb[0] || x > L.bb[1] || z < L.bb[2] || z > L.bb[3] || !pipL(x, z, L.ring)) continue;
@@ -367,12 +378,64 @@ if (lakes.length || streams.length) {
         vec3 wn = vec3(fbm(np + vec2(e, 0.)) - n0, 0., fbm(np + vec2(0., e)) - n0) * 2.2;
         normal = normalize(normal + (viewMatrix * vec4(wn, 0.)).xyz);`);
   };
-  for (const L of lakes) {
-    const geo = new THREE.ShapeGeometry(new THREE.Shape(L.ring.map(p => new THREE.Vector2(p.x, -p.z)))); geo.rotateX(-Math.PI / 2);
-    const uvA = geo.attributes.uv; for (let k = 0; k < uvA.count; k++) uvA.setXY(k, 0, 0);
-    const m = new THREE.Mesh(geo, waterMat); m.position.y = L.level - .12; m.receiveShadow = true; scene.add(m);
+  // Découpe du contour de l'étang en mailles (sommets intérieurs pour fondre les bords)
+  const clipCell = (poly, x0, x1, z0, z1) => {
+    const planes = [[p => p.x >= x0, (a, b) => ({ x: x0, z: a.z + (x0 - a.x) / (b.x - a.x) * (b.z - a.z) })], [p => p.x <= x1, (a, b) => ({ x: x1, z: a.z + (x1 - a.x) / (b.x - a.x) * (b.z - a.z) })],
+      [p => p.z >= z0, (a, b) => ({ z: z0, x: a.x + (z0 - a.z) / (b.z - a.z) * (b.x - a.x) })], [p => p.z <= z1, (a, b) => ({ z: z1, x: a.x + (z1 - a.z) / (b.z - a.z) * (b.x - a.x) })]];
+    let out = poly;
+    for (const [inside, cut] of planes) { const inp = out; out = []; if (!inp.length) break; for (let i = 0; i < inp.length; i++) { const cur = inp[i], prev = inp[(i + inp.length - 1) % inp.length], ci = inside(cur), pi = inside(prev); if (ci) { if (!pi) out.push(cut(prev, cur)); out.push(cur); } else if (pi) out.push(cut(prev, cur)); } }
+    return out;
+  };
+  const NOISE_GLSL = `
+    float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+    float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h21(i), h21(i + vec2(1., 0.)), f.x), mix(h21(i + vec2(0., 1.)), h21(i + vec2(1., 1.)), f.x), f.y); }
+    float fbm(vec2 p) { return vn(p) * .55 + vn(p * 2.1 + 7.3) * .3 + vn(p * 4.3 + 1.7) * .15; }`;
+  const PondShader = {
+    uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, uTime: { value: 0 }, uDeep: { value: new THREE.Color('#1f2a1c') }, uShore: { value: new THREE.Color('#4a4632') } },
+    vertexShader: `uniform mat4 textureMatrix; attribute float edge; varying vec4 vUv; varying float vEdge; varying vec2 vW; varying vec3 vPos;
+      void main() { vUv = textureMatrix * vec4(position, 1.); vEdge = edge; vec4 wp = modelMatrix * vec4(position, 1.); vW = wp.xz; vPos = wp.xyz; gl_Position = projectionMatrix * viewMatrix * wp; }`,
+    fragmentShader: `uniform vec3 color; uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uDeep; uniform vec3 uShore; varying vec4 vUv; varying float vEdge; varying vec2 vW; varying vec3 vPos;
+      ${NOISE_GLSL}
+      void main() {
+        vec2 d = vec2(fbm(vW * .5 + uTime * .12) - .5, fbm(vW * .5 + 9.1 - uTime * .1) - .5) * .045;   // ondulation qui trouble le reflet
+        vec4 uv = vUv; uv.xy += d * uv.w;
+        vec3 refl = texture2DProj(tDiffuse, uv).rgb;
+        float deep = smoothstep(0., 1., vEdge);
+        vec3 base = mix(uShore, uDeep, deep);
+        float fres = pow(1. - clamp(normalize(cameraPosition - vPos).y, 0., 1.), 3.);
+        vec3 col = mix(base, refl * vec3(.62, .68, .64), .18 + .62 * fres);                             // sombre vu d'en haut, miroir vu de biais
+        col += vec3(.05) * smoothstep(.78, .95, fbm(vW * 1.6 + vec2(uTime * .25, -uTime * .2)));        // scintillement
+        gl_FragColor = vec4(col, .97 * smoothstep(0., .22, vEdge));                                      // bord fondu dans la rive
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  };
+  const lakesBySize = lakes.map(L => ({ L, a: (L.bb[1] - L.bb[0]) * (L.bb[3] - L.bb[2]) })).sort((a, b) => b.a - a.a);
+  lakesBySize.forEach(({ L }, rank) => {
+    const cell = Math.max(1, Math.sqrt((L.bb[1] - L.bb[0]) * (L.bb[3] - L.bb[2])) / 70), pos = [], edg = [];
+    for (let x = Math.floor(L.bb[0]); x < L.bb[1]; x += cell) for (let z = Math.floor(L.bb[2]); z < L.bb[3]; z += cell) {
+      const piece = clipCell(L.ring, x, x + cell, z, z + cell); if (piece.length < 3) continue;
+      for (const t of THREE.ShapeUtils.triangulateShape(piece.map(p => new THREE.Vector2(p.x, p.z)), [])) for (const k of t) {
+        const p = piece[k]; pos.push(p.x, -p.z, 0);
+        let d = Infinity; for (let i = 0; i < L.ring.length; i++) d = Math.min(d, segDist(p.x, p.z, L.ring[i], L.ring[(i + 1) % L.ring.length])[0]);
+        edg.push(clamp(d / 4, 0, 1));
+      }
+    }
+    if (!pos.length) return;
+    let geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('edge', new THREE.Float32BufferAttribute(edg, 1));
+    geo = mergeVertices(geo, 1e-3);
+    let m;
+    if (rank < 2) { // reflets réels pour les deux plus grands plans d'eau
+      m = new Reflector(geo, { textureWidth: isTouch ? 512 : 1024, textureHeight: isTouch ? 512 : 1024, clipBias: .003, shader: PondShader });
+      m.material.transparent = true; m.material.depthWrite = false; m.material.side = THREE.DoubleSide; m.material.uniforms.uTime = U.time;
+      const render = m.onBeforeRender.bind(m);
+      m.onBeforeRender = (...a) => { const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false; render(...a); renderer.shadowMap.autoUpdate = au; };
+    } else {
+      const mat = waterMat.clone(); mat.onBeforeCompile = waterMat.onBeforeCompile; m = new THREE.Mesh(geo, mat);
+    }
+    m.rotation.x = -Math.PI / 2; m.position.y = L.level - .12; m.renderOrder = 1; scene.add(m);
     if (L.name) { const c = L.ring.reduce((a, p) => ({ x: a.x + p.x / L.ring.length, z: a.z + p.z / L.ring.length }), { x: 0, z: 0 }); waterLabels.push({ name: L.name, pos: new THREE.Vector3(c.x, L.level + 1.5, c.z) }); }
-  }
+  });
   const named = {};
   for (const st of streams) {
     const P = [], UV = [], I = []; let len = 0; const ph = st.pts.length * .37;
@@ -628,6 +691,7 @@ if (lidar.chm) {
   const detected = lidar.detectTrees({
     minHeight: 3,
     exclude: (la, lo) => { if (Math.abs(la - lat0) * mLat > S || Math.abs(lo - lon0) * mLon > S) return true; if (inBuildings(la, lo, buildings, dLat)) return true;
+      { const q = toLocal(la, lo); if (lakeDepthAt(q.x, q.z) > 1.2) return true; const ns = nearestStream(q.x, q.z); if (ns && ns.d < ns.w * .4) return true; }
       return trees.some(t => Math.hypot((t.lat - la) * mLat, (t.lon - lo) * mLon) < 3) || lidarTops.some(m => Math.hypot((m.lat - la) * mLat, (m.lon - lo) * mLon) < Math.max(2.5, m.radius * .6)); },
     max: isTouch ? 1200 : 2500,
   });
