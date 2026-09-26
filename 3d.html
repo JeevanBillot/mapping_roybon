@@ -122,7 +122,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadLidar, fetchBuildings, fetchWater, inBuildings, merc } from './lidar.js';
+import { loadLidar, fetchBuildings, fetchWater, fetchSports, inBuildings, merc } from './lidar.js';
 
 const D = window.RoybonData, $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -149,10 +149,11 @@ const latMin = lat0 - S / mLat, latMax = lat0 + S / mLat, lonMin = lon0 - S / mL
 
 // ---------- 2. Relief et végétation (LiDAR HD), bâtiments ----------
 const size = clamp(Math.round(2 * S / .6), 384, 768);
-const [lidar, buildings, water] = await Promise.all([
+const [lidar, buildings, water, sports] = await Promise.all([
   loadLidar(latMin, lonMin, latMax, lonMax, size, t => progress(t, .15)),
   fetchBuildings(latMin, lonMin, latMax, lonMax).catch(e => { warn('Bâtiments IGN indisponibles.'); return []; }),
   fetchWater(latMin, lonMin, latMax, lonMax).catch(e => { warn('Cours d\'eau IGN indisponibles.'); return { areas: [], streams: [] }; }),
+  fetchSports(latMin, lonMin, latMax, lonMax).catch(() => []),
 ]);
 progress('Analyse du relief…', .45);
 let groundLL;
@@ -229,7 +230,38 @@ function carve(x, z, y) {
   if (ns && ns.d < ns.w / 2 + 3) { const s2 = smooth01(clamp((ns.d - ns.w / 2 + .8) / 3.8, 0, 1)); y = Math.min(y, ns.h - .55) * (1 - s2) + y * s2; }
   return y;
 }
-const groundAt = (lakes.length || streams.length) ? (x, z) => carve(x, z, rawGround(x, z)) : rawGround;
+// ---------- Courts de tennis (BD TOPO) : emprise rectangulaire, sol nivelé ----------
+function minRect(pts) { // rectangle orienté d'aire minimale (enveloppe convexe + étriers tournants)
+  const P = pts.slice().sort((a, b) => a.x - b.x || a.z - b.z), cross = (o, a, b) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x), lo = [], hi = [];
+  for (const p of P) { while (lo.length > 1 && cross(lo.at(-2), lo.at(-1), p) <= 0) lo.pop(); lo.push(p); }
+  for (const p of P.reverse()) { while (hi.length > 1 && cross(hi.at(-2), hi.at(-1), p) <= 0) hi.pop(); hi.push(p); }
+  const H = lo.slice(0, -1).concat(hi.slice(0, -1)); let best = null;
+  for (let i = 0; i < H.length; i++) {
+    const a = H[i], b = H[(i + 1) % H.length], ang = Math.atan2(b.z - a.z, b.x - a.x), c = Math.cos(ang), s2 = Math.sin(ang);
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const p of H) { const u = p.x * c + p.z * s2, v = -p.x * s2 + p.z * c; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+    const area = (u1 - u0) * (v1 - v0);
+    if (!best || area < best.area) best = { area, ang, c, s: s2, cu: (u0 + u1) / 2, cv: (v0 + v1) / 2, L: u1 - u0, W: v1 - v0 };
+  }
+  if (best.W > best.L) { best.ang += Math.PI / 2; [best.L, best.W] = [best.W, best.L]; const c = Math.cos(best.ang), s2 = Math.sin(best.ang); const cx = best.cu * best.c - best.cv * best.s, cz = best.cu * best.s + best.cv * best.c; Object.assign(best, { c, s: s2, cu: cx * c + cz * s2, cv: -cx * s2 + cz * c }); }
+  best.cx = best.cu * best.c - best.cv * best.s; best.cz = best.cu * best.s + best.cv * best.c; // centre en coordonnées locales
+  return best;
+}
+const courts = [];
+for (const sp of sports) {
+  if (!/tennis/i.test(sp.nature + ' ' + sp.detail)) continue;
+  const ring = sp.rings[0].map(([la, lo]) => toLocal(la, lo)); if (ring.length < 3 || ring.every(p => Math.abs(p.x) > S || Math.abs(p.z) > S)) continue;
+  const r = minRect(ring); if (r.L < 8 || r.W < 5 || r.L > 80) continue;
+  const toCourt = (x, z) => { const dx = x - r.cx, dz = z - r.cz; return [dx * r.c + dz * r.s, -dx * r.s + dz * r.c]; };
+  const hs = []; for (let u = -r.L / 2; u <= r.L / 2; u += 2) for (let v = -r.W / 2; v <= r.W / 2; v += 2) hs.push(rawGround(r.cx + u * r.c - v * r.s, r.cz + u * r.s + v * r.c));
+  hs.sort((a, b) => a - b);
+  courts.push(Object.assign(r, { level: hs[hs.length >> 1], toCourt }));
+}
+function flattenCourts(x, z, y) {
+  for (const C of courts) { const [u, v] = C.toCourt(x, z), out = Math.max(Math.abs(u) - C.L / 2, Math.abs(v) - C.W / 2); if (out < 1.5) { const t = smooth01(clamp(out / 1.5, 0, 1)); y = C.level * (1 - t) + y * t; } }
+  return y;
+}
+const groundAt = (lakes.length || streams.length || courts.length) ? (x, z) => flattenCourts(x, z, carve(x, z, rawGround(x, z))) : rawGround;
 
 // ---------- 3. Rendu ----------
 progress('Construction de la scène…', .55);
@@ -453,6 +485,57 @@ if (lakes.length || streams.length) {
     if (st.name && (!named[st.name] || named[st.name].pts.length < st.pts.length)) named[st.name] = st;
   }
   for (const n in named) { const st = named[n], i = st.pts.length >> 1; waterLabels.push({ name: n, pos: new THREE.Vector3(st.pts[i].x, st.h[i] + 1.5, st.pts[i].z) }); }
+}
+
+// ---------- Courts de tennis : lignes, filet, grillage ----------
+if (courts.length) {
+  const lineMat = new THREE.MeshStandardMaterial({ color: '#f4f4ee', roughness: .7, polygonOffset: true, polygonOffsetFactor: -2 });
+  const postMat = new THREE.MeshStandardMaterial({ color: '#2f4a36', roughness: .6, metalness: .3 });
+  const grid = (cell, line, col, size = 256) => { const cv = document.createElement('canvas'); cv.width = cv.height = size; const g = cv.getContext('2d'); g.strokeStyle = col; g.lineWidth = line; g.beginPath(); for (let k = -size; k <= 2 * size; k += cell) { g.moveTo(k, 0); g.lineTo(k + size, size); g.moveTo(k, size); g.lineTo(k + size, 0); } g.stroke(); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
+  const fenceTex = grid(32, 3, '#274232'), netTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'); g.strokeStyle = '#1b1b1b'; g.lineWidth = 3; g.strokeRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; })();
+  for (const C of courts) {
+    const g = new THREE.Group(); g.position.set(C.cx, C.level + .02, C.cz); g.rotation.y = -C.ang; scene.add(g);
+    // Lignes réglementaires (double 23,77 × 10,97 m), réduites si l'emprise est plus petite
+    const k = Math.min(1, (C.L - 3) / 23.77, (C.W - 1.5) / 10.97), HL = 23.77 / 2 * k, HD = 10.97 / 2 * k, HS = 8.23 / 2 * k, SV = 6.40 * k;
+    // Surface : couleurs réelles relevées sur la photo aérienne (aire de jeu, et abords)
+    const sampleColor = inner => {
+      const cv = ortho && ortho.image, ctx = cv && cv.getContext && cv.getContext('2d'); if (!ctx) return null;
+      let r = 0, g2 = 0, b2 = 0, n = 0; const T = cv.width;
+      try {
+        for (let u = -C.L / 2 + .5; u < C.L / 2; u += .7) for (let v = -C.W / 2 + .5; v < C.W / 2; v += .7) {
+          const inside = Math.abs(u) < HL - .3 && Math.abs(v) < HD - .3; if (inside !== inner) continue;
+          const x = C.cx + u * C.c - v * C.s, z = C.cz + u * C.s + v * C.c, [tu, tv] = uvOf(...toLatLon(x, z));
+          const d = ctx.getImageData(Math.floor(tu * T), Math.floor((1 - tv) * T), 1, 1).data; r += d[0]; g2 += d[1]; b2 += d[2]; n++;
+        }
+      } catch (e) { return null; }
+      return n ? new THREE.Color(`rgb(${Math.round(r / n)},${Math.round(g2 / n)},${Math.round(b2 / n)})`) : null;
+    };
+    const cIn = sampleColor(true) || new THREE.Color('#8a6a5c'), cOut = sampleColor(false) || cIn.clone().offsetHSL(0, 0, -.04);
+    const surf = (w, h, col, y) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: col, map: detail, roughness: .95, polygonOffset: true, polygonOffsetFactor: -1 })); m.material.map = detail.clone(); m.material.map.needsUpdate = true; m.material.map.repeat.set(w / 3, h / 3); m.position.y = y; m.receiveShadow = true; g.add(m); };
+    surf(C.L, C.W, cOut, -.005); surf(2 * HL + .6, 2 * HD + .6, cIn, 0);
+    const line = (u0, v0, u1, v1, w = .05) => { const len = Math.hypot(u1 - u0, v1 - v0) + w, m = new THREE.Mesh(new THREE.PlaneGeometry(len, w).rotateX(-Math.PI / 2), lineMat); m.position.set((u0 + u1) / 2, 0, (v0 + v1) / 2); m.rotation.y = -Math.atan2(v1 - v0, u1 - u0); m.receiveShadow = true; g.add(m); };
+    for (const s2 of [-1, 1]) { line(s2 * HL, -HD, s2 * HL, HD, .1); line(-HL, s2 * HD, HL, s2 * HD); line(-HL, s2 * HS, HL, s2 * HS); line(s2 * SV, -HS, s2 * SV, HS); line(s2 * HL, 0, s2 * (HL - .1), 0, .05); }
+    line(-SV, 0, SV, 0);
+    // Filet et poteaux
+    const PW = HD + .914 * k;
+    for (const s2 of [-1, 1]) { const post = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, 1.07, 10).translate(0, .535, 0), postMat); post.position.set(0, 0, s2 * PW); post.castShadow = true; g.add(post); }
+    const netGeo = new THREE.PlaneGeometry(2 * PW, 1, 1, 8), np = netGeo.attributes.position; // affaissement au centre : 0,914 m
+    for (let i = 0; i < np.count; i++) { const x = np.getX(i), y = np.getY(i) + .5, top = .914 + (1.07 - .914) * (x / PW) ** 2; np.setY(i, y * top); }
+    netTex.repeat.set(2 * PW / .045, 1 / .045);
+    const net = new THREE.Mesh(netGeo, new THREE.MeshStandardMaterial({ map: netTex, transparent: true, alphaTest: .3, side: THREE.DoubleSide, color: '#222' })); net.rotation.y = Math.PI / 2; g.add(net);
+    const band = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([-1, -.5, 0, .5, 1].map(f => new THREE.Vector3(0, .914 + (1.07 - .914) * f * f, f * PW))), 16, .03, 6), lineMat); g.add(band);
+    // Grillage de 3 m tout autour, poteaux tous les 3 m, lisse haute
+    const FH = 3, HLf = C.L / 2, HWf = C.W / 2, fenceMat = new THREE.MeshStandardMaterial({ map: fenceTex, transparent: true, alphaTest: .25, side: THREE.DoubleSide, color: '#ffffff', roughness: .8 });
+    for (const [u0, v0, u1, v1] of [[-HLf, -HWf, HLf, -HWf], [HLf, -HWf, HLf, HWf], [HLf, HWf, -HLf, HWf], [-HLf, HWf, -HLf, -HWf]]) {
+      const len = Math.hypot(u1 - u0, v1 - v0), ang = Math.atan2(v1 - v0, u1 - u0);
+      const tex = fenceTex.clone(); tex.needsUpdate = true; tex.repeat.set(len / 1.2, FH / 1.2);
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(len, FH), fenceMat.clone()); panel.material.map = tex;
+      panel.position.set((u0 + u1) / 2, FH / 2, (v0 + v1) / 2); panel.rotation.y = -ang; panel.castShadow = true; g.add(panel);
+      const rail = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, len, 6), postMat); rail.rotation.z = Math.PI / 2; rail.rotation.y = -ang; rail.position.set((u0 + u1) / 2, FH, (v0 + v1) / 2); g.add(rail);
+      const n = Math.max(1, Math.round(len / 3));
+      for (let i = 0; i < n; i++) { const t = i / n, post = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, FH, 8).translate(0, FH / 2, 0), postMat); post.position.set(u0 + (u1 - u0) * t, 0, v0 + (v1 - v0) * t); post.castShadow = true; g.add(post); }
+    }
+  }
 }
 
 // ---------- 4. Bâtiments : toits reconstruits (LiDAR, sinon altitudes de toit BD TOPO), murs jusqu'au toit ----------
@@ -691,7 +774,7 @@ if (lidar.chm) {
   const detected = lidar.detectTrees({
     minHeight: 3,
     exclude: (la, lo) => { if (Math.abs(la - lat0) * mLat > S || Math.abs(lo - lon0) * mLon > S) return true; if (inBuildings(la, lo, buildings, dLat)) return true;
-      { const q = toLocal(la, lo); if (lakeDepthAt(q.x, q.z) > 1.2) return true; const ns = nearestStream(q.x, q.z); if (ns && ns.d < ns.w * .4) return true; }
+      { const q = toLocal(la, lo); if (courts.some(C => { const [u, v] = C.toCourt(q.x, q.z); return Math.abs(u) < C.L / 2 + .5 && Math.abs(v) < C.W / 2 + .5; })) return true; if (lakeDepthAt(q.x, q.z) > 1.2) return true; const ns = nearestStream(q.x, q.z); if (ns && ns.d < ns.w * .4) return true; }
       return trees.some(t => Math.hypot((t.lat - la) * mLat, (t.lon - lo) * mLon) < 3) || lidarTops.some(m => Math.hypot((m.lat - la) * mLat, (m.lon - lo) * mLon) < Math.max(2.5, m.radius * .6)); },
     max: isTouch ? 1200 : 2500,
   });

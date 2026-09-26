@@ -205,6 +205,13 @@ export async function fetchWater(latMin, lonMin, latMax, lonMax) {
   }
   return { areas, streams };
 }
+/* Terrains de sport BD TOPO (dont les courts de tennis). */
+export async function fetchSports(latMin, lonMin, latMax, lonMax) {
+  const out = [];
+  for (const f of await fetchWFS('BDTOPO_V3:terrain_de_sport', latMin, lonMin, latMax, lonMax))
+    for (const rings of polysOf(f)) out.push({ rings, nature: f.props.nature || '', detail: f.props.nature_detaillee || '' });
+  return out;
+}
 export function inPolygon(lat, lon, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
