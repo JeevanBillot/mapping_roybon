@@ -1,57 +1,27 @@
-/* Arbres détaillés : silhouette propre à l'espèce, feuillage en grappes de feuilles dessinées selon l'espèce,
-   écorce texturée, couleurs et écorce reprises des photos prises sur le terrain. Module ES. */
+/* Arbres détaillés par espèce : ramification procédurale (portage de EZ-Tree, © 2024 Daniel Greenheck, licence MIT),
+   feuillage en rameaux photographiés (chêne, frêne, feuilles rondes, résineux) et écorces photo (Poly Haven / TextureCan, CC0).
+   Silhouette réglée par port (feuillu étalé, ovoïde, bouleau, pleureur, cèdre, épicéa, sapin, pin, colonnaire, ginkgo, cépée, buisson dense),
+   mise à la hauteur et à la largeur mesurées ; teinte du feuillage et écorce reprises des photos du terrain. Module ES. */
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const rng = seed => { let s = 0; for (const c of String(seed)) s = (s * 31 + c.charCodeAt(0)) >>> 0; s = s || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const BASE = new URL('./tex/', import.meta.url).href;
 
-// ---------- Feuilles (gris clair, teintées par la couleur de l'arbre) ----------
-function leafPath(g, kind, r) {
-  g.beginPath();
-  const polar = f => { for (let i = 0; i <= 64; i++) { const a = i / 64 * Math.PI * 2, rr = f(a); const x = Math.cos(a) * rr, y = Math.sin(a) * rr; i ? g.lineTo(x, y) : g.moveTo(x, y); } };
-  if (kind === 'palmate') polar(a => .55 + .45 * Math.pow(Math.abs(Math.cos(2.5 * (a + Math.PI / 2))), .7));
-  else if (kind === 'lobed') { g.moveTo(0, -1); for (let i = 0; i <= 20; i++) { const y = -1 + i / 10, w = .42 * Math.sin(Math.PI * (i / 20)) * (.72 + .28 * Math.cos(i * 1.9)); g.lineTo(w, y); } for (let i = 20; i >= 0; i--) { const y = -1 + i / 10, w = .42 * Math.sin(Math.PI * (i / 20)) * (.72 + .28 * Math.cos(i * 1.9)); g.lineTo(-w, y); } }
-  else if (kind === 'fan') { g.moveTo(0, .9); g.lineTo(-.7, -.35); g.quadraticCurveTo(-.35, -.85, -.04, -.55); g.lineTo(0, -.35); g.lineTo(.04, -.55); g.quadraticCurveTo(.35, -.85, .7, -.35); g.closePath(); }
-  else if (kind === 'lanceolate') { g.moveTo(0, -1); g.quadraticCurveTo(.3, 0, 0, 1); g.quadraticCurveTo(-.3, 0, 0, -1); }
-  else if (kind === 'cordate') { g.moveTo(0, -1); g.bezierCurveTo(.6, -.5, .85, .45, .2, .85); g.quadraticCurveTo(0, .6, -.2, .85); g.bezierCurveTo(-.85, .45, -.6, -.5, 0, -1); }
-  else if (kind === 'round') polar(a => .78 + .05 * Math.sin(a * 18));
-  else { g.moveTo(0, -1); g.bezierCurveTo(.55, -.45, .5, .55, 0, 1); g.bezierCurveTo(-.5, .55, -.55, -.45, 0, -1); } // ovale
-  g.closePath();
+// ---------- Textures photo ----------
+const loader = new THREE.TextureLoader(), texCache = {};
+function tex(file, srgb = true, renderer) {
+  if (texCache[file]) return texCache[file];
+  const t = loader.load(BASE + file); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 4;
+  return (texCache[file] = t);
 }
-const leafCache = {};
-export function leafTexture(kind, renderer) {
-  if (leafCache[kind]) return leafCache[kind];
-  const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), r = rng(kind);
-  const needle = kind === 'needle' || kind === 'scale';
-  // brindilles
-  g.strokeStyle = 'rgb(120,110,95)'; g.lineWidth = needle ? 2.5 : 2;
-  const twigs = []; for (let i = 0; i < (needle ? 8 : 5); i++) { const a = r() * Math.PI * 2, x0 = S / 2 + (r() - .5) * 30, y0 = S / 2 + (r() - .5) * 30, L = S * (.28 + r() * .16); twigs.push([x0, y0, x0 + Math.cos(a) * L, y0 + Math.sin(a) * L]); g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + Math.cos(a) * L, y0 + Math.sin(a) * L); g.stroke(); }
-  if (kind === 'needle') { // aiguilles de part et d'autre des rameaux
-    for (const [x0, y0, x1, y1] of twigs) for (let k = 0; k < 46; k++) {
-      const f = k / 34, x = x0 + (x1 - x0) * f, y = y0 + (y1 - y0) * f, a = Math.atan2(y1 - y0, x1 - x0) + (k % 2 ? 1 : -1) * (.9 + r() * .3), L = 12 + r() * 9, v = 175 + r() * 80;
-      g.strokeStyle = `rgb(${v},${v},${v})`; g.lineWidth = 1.8; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke();
-    }
-  } else if (kind === 'scale') { // touffes courtes (cèdre, thuya)
-    for (let k = 0; k < 120; k++) {
-      const tw = twigs[k % twigs.length], f = r(), cx = tw[0] + (tw[2] - tw[0]) * f + (r() - .5) * 18, cy = tw[1] + (tw[3] - tw[1]) * f + (r() - .5) * 18, v = 200 + r() * 55;
-      g.strokeStyle = `rgb(${v},${v},${v})`; g.lineWidth = 1.6;
-      for (let j = 0; j < 12; j++) { const a = j / 12 * Math.PI * 2 + r() * .3, L = 6 + r() * 6; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * L, cy + Math.sin(a) * L); g.stroke(); }
-    }
-  } else { // feuilles
-    const n = kind === 'round' || kind === 'lanceolate' ? 46 : 36, size = { palmate: 34, lobed: 34, fan: 30, cordate: 30, ovate: 28, round: 24, lanceolate: 32 }[kind] || 28;
-    for (let k = 0; k < n; k++) {
-      const tw = twigs[k % twigs.length], f = .1 + r() * .9, x = tw[0] + (tw[2] - tw[0]) * f + (r() - .5) * 40, y = tw[1] + (tw[3] - tw[1]) * f + (r() - .5) * 40;
-      const v = 205 + r() * 50, s = size * (.75 + r() * .45);
-      g.save(); g.translate(x, y); g.rotate(r() * Math.PI * 2); g.scale(s, s);
-      leafPath(g, kind, r); g.fillStyle = `rgb(${v},${v},${v * .97})`; g.fill();
-      g.strokeStyle = `rgba(90,90,80,.35)`; g.lineWidth = .06; g.beginPath(); g.moveTo(0, -.9); g.lineTo(0, .9); g.stroke();
-      g.restore();
-    }
-  }
-  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
-  return (leafCache[kind] = t);
-}
+// Rameau photographié par type de feuille, et sa couleur moyenne (pour recaler la teinte)
+const LEAF = {
+  lobed: ['leaf_oak.png', '#5f7d35'], lanceolate: ['leaf_ash.png', '#557931'], ovate: ['leaf_round.png', '#709b3d'], palmate: ['leaf_oak.png', '#5f7d35'],
+  cordate: ['leaf_round.png', '#709b3d'], round: ['leaf_round.png', '#709b3d'], fan: ['leaf_round.png', '#709b3d'], needle: ['leaf_pine.png', '#596f29'], scale: ['leaf_pine.png', '#596f29'],
+};
+const BARK = { furrowed: 'oak', ridged: 'willow', fibrous: 'willow', plates: 'pine', birch: 'birch' }; // 'smooth' : texture dessinée
 
 // ---------- Écorces ----------
 const barkCache = {};
@@ -107,75 +77,6 @@ export async function photoBarkTexture(url, renderer) {
   } catch (e) { return null; }
 }
 
-// Évite les feuillages trop sombres (luminosité mini)
-function lift(c) { const hsl = {}; c.getHSL(hsl, THREE.SRGBColorSpace); if (hsl.l < .3) c.setHSL(hsl.h, Math.min(hsl.s, .6), .3, THREE.SRGBColorSpace); return c; }
-
-// ---------- Silhouettes par port ----------
-/* Renvoie les grappes de feuillage { p: position (m), s: taille (m), droop } et les branches [a, b, r0, r1]. */
-function layout(form, h, rad, r) {
-  const C = [], B = [], V = (x, y, z) => new THREE.Vector3(x, y, z);
-  const shell = (cy, rx, ry, n, inner = .72, size = 1) => { n = Math.round(n * 1.5); for (let i = 0; i < n; i++) { const u = r() * 2 - 1, a = r() * Math.PI * 2, k = inner + (1 - inner) * Math.sqrt(r()), sq = Math.sqrt(1 - u * u); C.push({ p: V(Math.cos(a) * sq * rx * k, cy + u * ry * k, Math.sin(a) * sq * rx * k), s: size * (.8 + r() * .6) }); }
-    // remplissage intérieur : évite les trous sans boule sombre
-    for (let i = 0, m = Math.round(n * .3); i < m; i++) { const u = r() * 2 - 1, a = r() * Math.PI * 2, k = .2 + r() * (inner - .2), sq = Math.sqrt(1 - u * u); C.push({ p: V(Math.cos(a) * sq * rx * k, cy + u * ry * k, Math.sin(a) * sq * rx * k), s: size * (1 + r() * .5) }); } };
-  const scaffolds = (y0, n, spread, rise, len) => { for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + r() * .6, L = len * (.7 + r() * .4); B.push([V(0, y0, 0), V(Math.cos(a) * L * spread, y0 + L * rise, Math.sin(a) * L * spread), .35, .12]); } };
-  const cs = clamp(rad * .42, .9, 2.2); // taille d'une grappe
-  switch (form) {
-    case 'cedar': { // plateaux horizontaux étagés
-      const tiers = 5 + Math.round(r() * 2), y0 = h * .12;
-      for (let t = 0; t < tiers; t++) {
-        const f = t / (tiers - 1), y = y0 + (h - y0 - 1.5) * f, pr = rad * (1 - f * .55) * (.85 + r() * .3), a0 = r() * 6.28;
-        B.push([V(0, y, 0), V(Math.cos(a0) * pr * .8, y + .6, Math.sin(a0) * pr * .8), .25, .08], [V(0, y, 0), V(-Math.cos(a0) * pr * .7, y + .5, -Math.sin(a0) * pr * .7), .22, .07]);
-        const n = Math.round(22 + pr * 6);
-        for (let i = 0; i < n; i++) { const a = r() * 6.28, d = pr * Math.sqrt(r()); C.push({ p: V(Math.cos(a) * d, y + .3 + r() * .6 - d / pr * .4, Math.sin(a) * d), s: cs * 1.1, flat: true }); }
-      }
-      break;
-    }
-    case 'spruce': case 'fir': { // cône d'étages ; branches tombantes (épicéa) ou relevées (sapin)
-      const y0 = h * .05, levels = Math.max(8, Math.round((h - y0) / .9));
-      for (let l = 0; l < levels; l++) {
-        const f = l / levels, y = y0 + (h - y0) * f, pr = rad * Math.pow(1 - f, .95) + .25, n = Math.round(6 + pr * 5);
-        for (let i = 0; i < n; i++) { const a = i / n * 6.28 + r() * .5, d = pr * (.55 + r() * .45); C.push({ p: V(Math.cos(a) * d, y + (form === 'spruce' ? -d * .25 : d * .08), Math.sin(a) * d), s: cs * (.7 + (1 - f) * .5), droop: form === 'spruce' ? .5 : -.2 }); }
-      }
-      break;
-    }
-    case 'pine': { scaffolds(h * .62, 5, .7, .45, rad); shell(h * .8, rad, h * .13, Math.round(60 + rad * 12), .5, 1.1); break; }
-    case 'columnar': shell(h * .55, rad, h * .45, Math.round(80 + h * 6), .6, .9); break;
-    case 'weeping': {
-      shell(h * .62, rad * .85, h * .3, 70, .6);
-      for (let i = 0; i < 26; i++) { const a = i / 26 * 6.28 + r() * .2; for (let k = 0; k < 5; k++) C.push({ p: V(Math.cos(a) * rad * (.8 + k * .04), h * (.75 - k * .13), Math.sin(a) * rad * (.8 + k * .04)), s: cs * .9, hang: true }); }
-      scaffolds(h * .45, 5, .8, .5, rad * .9); break;
-    }
-    case 'birch': { // port léger, clairsemé, rameaux retombants
-      scaffolds(h * .35, 6, .55, .9, h * .35);
-      shell(h * .62, rad, h * .36, Math.round(55 + h * 2), .45, .8); break;
-    }
-    case 'ginkgo': { // charpentières dressées, port irrégulier et aéré
-      for (let i = 0; i < 5; i++) {
-        const a = i / 5 * 6.28 + r(), tilt = .25 + r() * .3, L = h * (.45 + r() * .2), y0 = h * (.25 + r() * .15), end = V(Math.cos(a) * L * tilt, y0 + L, Math.sin(a) * L * tilt);
-        B.push([V(0, y0, 0), end, .28, .08]);
-        for (let k = 0; k < 16; k++) { const f = .3 + r() * .75; C.push({ p: V(end.x * f + (r() - .5) * rad * .5, y0 + (end.y - y0) * f + (r() - .5) * 1.2, end.z * f + (r() - .5) * rad * .5), s: cs * .9 }); }
-      }
-      break;
-    }
-    case 'multistem': { // cépée : plusieurs brins depuis le sol
-      for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28 + r() * .5, lean = rad * (.45 + r() * .3); B.push([V(Math.cos(a) * .15, 0, Math.sin(a) * .15), V(Math.cos(a) * lean, h * (.8 + r() * .15), Math.sin(a) * lean), .09, .04]); }
-      shell(h * .6, rad, h * .42, Math.round(60 + rad * 14), .55); break;
-    }
-    case 'dense': shell(h * .5, rad, h * .5, Math.round(90 + rad * 20), .7, .9); break;
-    case 'ovoid': scaffolds(h * .3, 4, .45, .8, h * .3); shell(h * .6, rad, h * .4, Math.round(90 + rad * 14), .7); break;
-    default: scaffolds(h * .32, 5, .6, .6, rad * .9); shell(h * .64, rad, h * .34, Math.round(90 + rad * 14), .7); // feuillu étalé
-  }
-  return { C, B };
-}
-
-// Tronc ou branche : cylindre orienté entre deux points
-function limb(a, b, r0, r1) {
-  const d = new THREE.Vector3().subVectors(b, a), len = d.length(), g = new THREE.CylinderGeometry(r1, r0, len, 8, 1, true);
-  g.translate(0, len / 2, 0); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize())); g.translate(a.x, a.y, a.z);
-  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * len / 1.2); // écorce à l'échelle
-  return g;
-}
-
 function windify(mat, U, amp) {
   mat.onBeforeCompile = sh => {
     sh.uniforms.uTime = U.time;
@@ -190,57 +91,145 @@ function windify(mat, U, amp) {
 }
 
 /* Construit l'arbre détaillé. h : hauteur (m), rad : rayon de couronne (m). */
-export function buildDetailedTree({ tr, h, rad, seed, U, renderer, lite = false }) {
-  const r = rng(seed), group = new THREE.Group(), form = tr.form || 'broad';
-  const { C, B } = layout(form, h, rad, r);
-  // Tronc principal
-  const conifer = ['cedar', 'spruce', 'fir', 'columnar'].includes(form), trunkTop = conifer ? h * .95 : form === 'multistem' ? 0 : form === 'pine' ? h * .7 : h * .55;
-  const r0 = clamp(.08 + h * .016, .1, .8), geos = [];
-  if (trunkTop > 0) geos.push(limb(new THREE.Vector3(0, -.2, 0), new THREE.Vector3(0, trunkTop, 0), r0, r0 * .35));
-  for (const [a, b, f0, f1] of B) geos.push(limb(a, b, Math.max(.04, r0 * f0 * 1.3), Math.max(.025, r0 * f1 * 1.3)));
-  const barkMat = new THREE.MeshStandardMaterial({ map: barkTexture(tr.bark || 'furrowed', renderer), roughness: 1 });
-  barkMat.map = barkMat.map.clone(); barkMat.map.needsUpdate = true; barkMat.map.repeat.set(1.5, 1);
-  const trunk = new THREE.Mesh(mergeGeometries(geos.map(g => g.index ? g.toNonIndexed() : g)), barkMat); trunk.castShadow = true; group.add(trunk);
-  // Feuillage : grappes = 2 plans croisés texturés, normales orientées vers l'extérieur de la couronne (volume doux)
-  const clusters = lite ? C.filter((_, i) => i % 2 === 0) : C;
-  const P = [], N = [], UV = [], COL = [], center = new THREE.Vector3(0, form === 'cedar' ? h * .5 : h * .62, 0);
-  const q = new THREE.Quaternion(), e = new THREE.Euler(), tmp = new THREE.Vector3(), nrm = new THREE.Vector3();
-  const quad = [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, -.5], [.5, .5], [-.5, .5]], uvq = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];
-  for (const c of clusters) {
-    nrm.copy(c.p).sub(center); nrm.y *= .6; nrm.normalize().lerp(new THREE.Vector3(0, 1, 0), .25).normalize();
-    const shade = clamp(.8 + .4 * (c.p.y / h) + .12 * nrm.y + (r() - .5) * .16, .65, 1.3);
-    for (let k = 0; k < 2; k++) {
-      if (c.flat) e.set(k ? -.35 + (r() - .5) * .4 : -Math.PI / 2 + (r() - .5) * .5, r() * 6.28, 0);
-      else if (c.hang) e.set((r() - .5) * .3, r() * 6.28, 0);
-      else e.set((r() - .5) * 1.2 + (c.droop || 0), k * Math.PI / 2 + r() * 6.28, (r() - .5) * .6);
-      q.setFromEuler(e);
-      const sx = c.s * (c.hang ? .6 : 1), sy = c.s * (c.hang ? 1.8 : 1);
-      for (let v = 0; v < 6; v++) {
-        tmp.set(quad[v][0] * sx, quad[v][1] * sy, 0).applyQuaternion(q).add(c.p);
-        P.push(tmp.x, tmp.y, tmp.z); N.push(nrm.x, nrm.y, nrm.z); UV.push(uvq[v][0], uvq[v][1]); COL.push(shade, shade, shade);
+
+// ---------- Ports (paramètres de ramification) ----------
+/* type : 'deciduous' (branche terminale) ou 'evergreen' (tronc unique, branches décroissantes).
+   Par niveau : angle (°), enfants, longueur, rayon relatif, sections, segments, départ, conicité, torsion, noueux. */
+const P = (o) => Object.assign({ type: 'deciduous', force: .0, levels: 3, leaves: { angle: 36, count: 10, start: .15, size: 4.5, var: .6 } }, o);
+const FORMS = {
+  broad: P({ angle: [0, 54, 43, 32], children: [9, 5, 3], length: [47.7, 29.4, 17.6, 7.2], radius: [3, .69, .69, 1.19], sections: [14, 8, 6, 3], segments: [10, 5, 3, 3], start: [0, .35, .1, 0], taper: [.73, .42, .69, .75], twist: [-.23, .42, 0, 0], gnarl: [-.04, .16, -.06, .09], force: -.025, trunkR: .028 }),
+  ovoid: P({ angle: [0, 39, 39, 51], children: [10, 4, 3], length: [45, 24, 13, 4.6], radius: [3, .53, .79, 1.11], sections: [12, 8, 6, 4], segments: [8, 6, 4, 3], start: [0, .32, .34, 0], taper: [.7, .62, .76, 0], twist: [.09, -.07, 0, 0], gnarl: [-.05, .2, .16, .05], force: -.008, leaves: { angle: 30, count: 10, start: .01, size: 4.6, var: .6 }, trunkR: .025 }),
+  birch: P({ levels: 2, angle: [0, 47, 63], children: [12, 7], length: [69.6, 18.6, 11.2], radius: [1.11, .58, .7], sections: [12, 10, 8], segments: [8, 6, 4], start: [0, .5, .05], taper: [.7, .13, .7], twist: [0, 0, 0], gnarl: [.05, -.03, .12], force: .02, leaves: { angle: 36, count: 20, start: .15, size: 3.5, var: .6 }, trunkR: .014 }),
+  weeping: P({ angle: [0, 55, 70, 60], children: [9, 5, 4], length: [30, 22, 16, 9], radius: [3, .6, .6, .8], sections: [10, 8, 8, 6], segments: [10, 5, 3, 3], start: [0, .45, .1, 0], taper: [.7, .5, .7, .7], twist: [0, .2, 0, 0], gnarl: [-.03, .1, .05, .05], force: -.05, leaves: { angle: 25, count: 14, start: .05, size: 3.5, var: .5 }, trunkR: .035 }),
+  ginkgo: P({ levels: 2, angle: [0, 28, 55], children: [8, 8], length: [55, 28, 9], radius: [1.3, .6, .7], sections: [12, 8, 5], segments: [8, 5, 3], start: [0, .25, .1], taper: [.7, .6, .7], twist: [0, .1, 0], gnarl: [.04, .08, .1], force: .02, leaves: { angle: 40, count: 14, start: .05, size: 3.6, var: .5 }, trunkR: .018 }),
+  multistem: P({ angle: [0, 22, 62, 60], children: [7, 3, 2], length: [.1, 15.3, 5.6, 4.6], radius: [.58, .95, .76, .7], sections: [6, 6, 8, 6], segments: [4, 4, 4, 3], start: [0, .53, .33, 0], taper: [.7, .7, .7, .7], twist: [.3, -.07, 0, 0], gnarl: [.11, .09, .05, .09], force: -.02, leaves: { angle: 55, count: 12, start: 0, size: 2.45, var: .6 }, trunkR: .02 }),
+  dense: P({ angle: [0, 40, 62, 60], children: [10, 4, 3], length: [3, 15, 6, 4.6], radius: [.9, .9, .76, .7], sections: [6, 6, 8, 5], segments: [6, 4, 4, 3], start: [0, .2, .2, 0], taper: [.7, .7, .7, .7], twist: [.3, -.07, 0, 0], gnarl: [.08, .09, .05, .09], force: -.012, leaves: { angle: 55, count: 16, start: 0, size: 2.8, var: .5 }, trunkR: .03 }),
+  columnar: P({ levels: 2, angle: [0, 18, 30], children: [34, 5], length: [60, 16, 7], radius: [1.2, .5, .7], sections: [14, 6, 4], segments: [8, 4, 3], start: [0, .12, .1], taper: [.7, .6, .7], twist: [0, 0, 0], gnarl: [.02, .05, .05], force: .03, leaves: { angle: 30, count: 12, start: .05, size: 3.2, var: .5 }, trunkR: .02 }),
+  columnarEver: P({ type: 'evergreen', levels: 1, angle: [0, 35], children: [90], length: [55, 11], radius: [1.1, .45], sections: [14, 6], segments: [8, 4], start: [0, .05], taper: [.7, .7], twist: [0, 0], gnarl: [.02, .06], force: .02, leaves: { angle: 30, count: 14, start: .05, size: 2.6, var: .3 }, trunkR: .02 }),
+  spruce: P({ type: 'evergreen', levels: 1, angle: [0, 118], children: [110], length: [65, 30], radius: [1.27, .37], sections: [14, 10], segments: [8, 5], start: [0, .12], taper: [.7, .7], twist: [0, 0], gnarl: [.04, .08], force: .006, leaves: { angle: 20, count: 18, start: .08, size: 2.6, var: .2 }, trunkR: .015 }),
+  fir: P({ type: 'evergreen', levels: 1, angle: [0, 96], children: [95], length: [60, 26], radius: [1.2, .36], sections: [14, 10], segments: [8, 5], start: [0, .12], taper: [.7, .7], twist: [0, 0], gnarl: [.03, .06], force: .004, leaves: { angle: 30, count: 20, start: .08, size: 2.4, var: .2 }, trunkR: .016 }),
+  pine: P({ type: 'evergreen', levels: 2, angle: [0, 62, 40], children: [22, 5], length: [55, 30, 9], radius: [1.3, .45, .6], sections: [14, 8, 5], segments: [8, 5, 3], start: [0, .58, .2], taper: [.7, .7, .7], twist: [0, .1, 0], gnarl: [.06, .12, .1], force: .015, leaves: { angle: 35, count: 16, start: .2, size: 3.4, var: .3 }, trunkR: .02 }),
+  cedar: P({ type: 'evergreen', levels: 2, angle: [0, 92, 65], children: [26, 7], length: [55, 42, 11], radius: [1.8, .45, .6], sections: [14, 8, 5], segments: [10, 5, 3], start: [0, .18, .1], taper: [.7, .7, .7], twist: [0, .15, 0], gnarl: [.04, .06, .08], force: .004, leaves: { angle: 70, count: 14, start: .05, size: 3.6, var: .3 }, trunkR: .028 }),
+};
+
+// ---------- Générateur (d'après EZ-Tree) ----------
+function generate(o, seed, lite) {
+  const r = rng(seed), rand = (max = 1, min = 0) => min + r() * (max - min);
+  const B = { v: [], n: [], uv: [], idx: [] }, L = { v: [], uv: [], idx: [] };
+  const queue = [{ origin: new THREE.Vector3(), ori: new THREE.Euler(), length: o.length[0], radius: o.radius[0], level: 0, sections: o.sections[0], segments: o.segments[0] }];
+  const up = new THREE.Vector3(0, 1, 0), qForce = new THREE.Quaternion(), leafK = lite ? .6 : 1;
+  const leafCount = Math.max(3, Math.round(o.leaves.count * leafK)), leafSize = o.leaves.size * (lite ? 1.2 : 1);
+  const leaf = (origin, ori) => {
+    const s = leafSize * (1 + rand(o.leaves.var, -o.leaves.var)), W = s, H = s;
+    for (const rot of [0, Math.PI / 2]) {
+      const i = L.v.length / 3, e = new THREE.Euler(0, rot + rand(.4, -.4), 0);
+      for (const [x, y] of [[-W / 2, H], [-W / 2, 0], [W / 2, 0], [W / 2, H]]) { const p = new THREE.Vector3(x, y, 0).applyEuler(e).applyEuler(ori).add(origin); L.v.push(p.x, p.y, p.z); }
+      L.uv.push(0, 1, 0, 0, 1, 0, 1, 1); L.idx.push(i, i + 1, i + 2, i, i + 2, i + 3);
+    }
+  };
+  const along = (sections, t) => { // origine / orientation / rayon interpolés le long d'une branche
+    const k = Math.floor(t * (sections.length - 1)), a = sections[k], b = sections[Math.min(k + 1, sections.length - 1)], al = t * (sections.length - 1) - k;
+    const qa = new THREE.Quaternion().setFromEuler(a.ori), qb = new THREE.Quaternion().setFromEuler(b.ori);
+    return { origin: new THREE.Vector3().lerpVectors(a.origin, b.origin, al), ori: new THREE.Euler().setFromQuaternion(qb.slerp(qa, al)), radius: (1 - al) * a.radius + al * b.radius };
+  };
+  const spin = (parentOri, angleDeg, radial) => new THREE.Euler().setFromQuaternion(new THREE.Quaternion().setFromEuler(parentOri).multiply(new THREE.Quaternion().setFromAxisAngle(up, radial).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angleDeg * Math.PI / 180))));
+  while (queue.length) {
+    const br = queue.shift(), off = B.v.length / 3, secs = [], secLen = br.length / br.sections;
+    let ori = br.ori.clone(), org = br.origin.clone(), vAcc = 0;
+    const vScale = 1 / (2 * Math.PI * Math.max(br.radius, .05));
+    for (let i = 0; i <= br.sections; i++) {
+      let rad = br.radius;
+      if (i === br.sections && br.level === o.levels) rad = .001;
+      else if (o.type === 'deciduous') rad *= 1 - o.taper[br.level] * (i / br.sections);
+      else rad *= 1 - i / br.sections;
+      for (let j = 0; j <= br.segments; j++) {
+        const a = 2 * Math.PI * (j % br.segments) / br.segments, nrm = new THREE.Vector3(Math.cos(a), 0, Math.sin(a)).applyEuler(ori), p = nrm.clone().multiplyScalar(rad).add(org);
+        B.v.push(p.x, p.y, p.z); B.n.push(nrm.x, nrm.y, nrm.z); B.uv.push(j / br.segments, vAcc * vScale);
+      }
+      secs.push({ origin: org.clone(), ori: ori.clone(), radius: rad });
+      org.add(new THREE.Vector3(0, secLen, 0).applyEuler(ori)); vAcc += secLen;
+      const g = Math.max(1, 1 / Math.sqrt(Math.max(rad, 1e-3))) * o.gnarl[br.level];
+      ori.x += rand(g, -g); ori.z += rand(g, -g);
+      const q = new THREE.Quaternion().setFromEuler(ori).multiply(new THREE.Quaternion().setFromAxisAngle(up, o.twist[br.level]));
+      q.rotateTowards(qForce.setFromUnitVectors(up, up), o.force / Math.max(rad, .02));
+      ori.setFromQuaternion(q);
+    }
+    const N = br.segments + 1;
+    for (let i = 0; i < br.sections; i++) for (let j = 0; j < br.segments; j++) { const v1 = off + i * N + j, v2 = v1 + 1, v3 = v1 + N, v4 = v2 + N; B.idx.push(v1, v3, v2, v2, v3, v4); }
+    if (o.type === 'deciduous') {
+      const last = secs[secs.length - 1];
+      if (br.level < o.levels) queue.push({ origin: last.origin, ori: last.ori, length: o.length[br.level + 1], radius: last.radius, level: br.level + 1, sections: br.sections, segments: br.segments });
+      else leaf(last.origin, last.ori);
+    }
+    if (br.level === o.levels) {
+      const ro = r();
+      for (let i = 0; i < leafCount; i++) { const at = along(secs, rand(1, o.leaves.start)); leaf(at.origin, spin(at.ori, o.leaves.angle, 2 * Math.PI * (ro + i / leafCount))); }
+    } else {
+      const lv = br.level + 1, count = o.children[br.level], ro = r();
+      for (let i = 0; i < count; i++) {
+        const t = rand(1, o.start[lv]), at = along(secs, t);
+        queue.push({ origin: at.origin, ori: spin(at.ori, o.angle[lv], 2 * Math.PI * (ro + i / count)), length: o.length[lv] * (o.type === 'evergreen' ? 1 - t : 1), radius: o.radius[lv] * at.radius, level: lv, sections: o.sections[lv], segments: o.segments[lv] });
       }
     }
   }
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.Float32BufferAttribute(B.v, 3)); bg.setAttribute('normal', new THREE.Float32BufferAttribute(B.n, 3)); bg.setAttribute('uv', new THREE.Float32BufferAttribute(B.uv, 2)); bg.setIndex(B.idx);
   const lg = new THREE.BufferGeometry();
-  lg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); lg.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-  lg.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2)); lg.setAttribute('color', new THREE.Float32BufferAttribute(COL, 3));
-  const tex = leafTexture(tr.leaf || 'ovate', renderer);
-  const leafMat = windify(new THREE.MeshStandardMaterial({ map: tex, color: lift(new THREE.Color(tr.color)), vertexColors: true, alphaTest: .45, side: THREE.DoubleSide, roughness: .8 }), U, .012);
-  leafMat.emissive = leafMat.color.clone().multiplyScalar(.22); // lumière diffuse traversant le feuillage (évite les feuilles noires à l'ombre)
-  const leaves = new THREE.Mesh(lg, leafMat); leaves.castShadow = true; leaves.receiveShadow = true;
-  leaves.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: .45 });
-  group.add(leaves);
-  // Cœur sombre qui comble les trous du feuillage (sauf ports clairsemés)
-  if (['spruce', 'fir', 'columnar'].includes(form)) {
-    const ry = form === 'spruce' || form === 'fir' ? (h - h * .05) / 2 : form === 'columnar' ? h * .4 : form === 'pine' ? h * .1 : form === 'dense' || form === 'multistem' ? h * .38 : h * .28;
-    const cy = form === 'spruce' || form === 'fir' ? h * .45 : form === 'pine' ? h * .8 : form === 'dense' ? h * .5 : h * .62;
-    const coreGeo = form === 'spruce' || form === 'fir' ? new THREE.ConeGeometry(rad * .62, h * .88, 10).translate(0, h * .5, 0) : new THREE.IcosahedronGeometry(1, 2).scale(rad * .58, ry * .72, rad * .58).translate(0, cy, 0);
-    const core = new THREE.Mesh(coreGeo, windify(new THREE.MeshStandardMaterial({ color: new THREE.Color(tr.color).multiplyScalar(.72), roughness: 1, flatShading: true }), U, .012));
-    core.castShadow = true; group.add(core); group.userData.core = core;
+  lg.setAttribute('position', new THREE.Float32BufferAttribute(L.v, 3)); lg.setAttribute('uv', new THREE.Float32BufferAttribute(L.uv, 2)); lg.setIndex(L.idx);
+  return { bg, lg };
+}
+
+// Normales « bombées » : chaque rameau est éclairé comme la surface d'un houppier, sans faces noires
+function crownNormals(lg, center, ry) {
+  const p = lg.attributes.position, n = new Float32Array(p.count * 3), v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) { v.set(p.getX(i) - center.x, (p.getY(i) - center.y) / Math.max(ry, .1) * 1.4, p.getZ(i) - center.z).normalize(); v.y = v.y * .8 + .35; v.normalize(); n.set([v.x, v.y, v.z], i * 3); }
+  lg.setAttribute('normal', new THREE.BufferAttribute(n, 3));
+  // teinte par sommet : plus sombre au cœur et en bas du houppier
+  const c = new Float32Array(p.count * 3), bb = lg.boundingBox;
+  for (let i = 0; i < p.count; i++) {
+    const dx = p.getX(i) - center.x, dz = p.getZ(i) - center.z, dy = (p.getY(i) - bb.min.y) / Math.max(bb.max.y - bb.min.y, .1);
+    const rr = Math.hypot(dx, dz) / Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z, .1) * 2;
+    const k = clamp(.62 + .3 * dy + .22 * rr, .6, 1.12); c.set([k, k, k * .96], i * 3);
   }
+  lg.setAttribute('color', new THREE.BufferAttribute(c, 3));
+}
+
+// ---------- Arbre complet ----------
+export function buildDetailedTree({ tr, h, rad, seed, U, renderer, lite = false }) {
+  let form = tr.form || 'broad';
+  if (form === 'columnar' && (tr.leaf === 'scale' || tr.leaf === 'needle')) form = 'columnarEver';
+  const o = FORMS[form] || FORMS.broad, leafKind = LEAF[tr.leaf] ? tr.leaf : (o.type === 'evergreen' ? 'needle' : 'ovate');
+  // 1re passe : taille brute → rayon de tronc réaliste ; 2e passe définitive
+  let { bg, lg } = generate(o, seed, lite); bg.computeBoundingBox(); lg.computeBoundingBox();
+  const bb0 = bg.boundingBox.clone().union(lg.boundingBox), s0 = h / Math.max(bb0.max.y, .1);
+  const wantR = clamp(h * o.trunkR, .05, .75), o2 = { ...o, radius: [wantR / s0, ...o.radius.slice(1)] };
+  bg.dispose(); lg.dispose(); ({ bg, lg } = generate(o2, seed, lite));
+  bg.computeBoundingBox(); lg.computeBoundingBox();
+  const bb = bg.boundingBox.clone().union(lg.boundingBox), s = h / Math.max(bb.max.y, .1);
+  const halfW = Math.max((bb.max.x - bb.min.x), (bb.max.z - bb.min.z)) / 2 * s, kx = clamp(rad / Math.max(halfW, .1), .7, 1.4);
+  const cx = (bb.max.x + bb.min.x) / 2, cz = (bb.max.z + bb.min.z) / 2;
+  const M = new THREE.Matrix4().makeScale(s * kx, s, s * kx).multiply(new THREE.Matrix4().makeTranslation(-cx * .6, 0, -cz * .6));
+  bg.applyMatrix4(M); lg.applyMatrix4(M); lg.computeBoundingBox();
+  const lb = lg.boundingBox, center = new THREE.Vector3((lb.min.x + lb.max.x) / 2, (lb.min.y + lb.max.y) / 2, (lb.min.z + lb.max.z) / 2);
+  crownNormals(lg, center, (lb.max.y - lb.min.y) / 2);
+
+  const group = new THREE.Group();
+  const bk = BARK[tr.bark], rep = tr.bark === 'birch' ? 1 : 2;
+  const barkMat = new THREE.MeshStandardMaterial({ roughness: .95, color: 0xffffff });
+  if (bk) { barkMat.map = tex(`bark_${bk}_color.jpg`, true, renderer); barkMat.normalMap = tex(`bark_${bk}_normal.jpg`, false, renderer); barkMat.normalScale.set(1.2, 1.2); }
+  else { barkMat.map = barkTexture(tr.bark || 'smooth', renderer); barkMat.normalMap = tex('bark_oak_normal.jpg', false, renderer); barkMat.normalScale.set(.35, .35); }
+  barkMat.map.repeat.set(rep, rep);
+  const trunk = new THREE.Mesh(bg, windify(barkMat, U, .006)); trunk.castShadow = true; trunk.receiveShadow = true; group.add(trunk);
+
+  const [file, avg] = LEAF[leafKind], leafMap = tex(file, true, renderer), texAvg = new THREE.Color(avg);
+  const tintFor = (c, k) => { const t = new THREE.Color(1, 1, 1); if (!c) return t; const r = ['r', 'g', 'b'].map(ch => clamp(c[ch] / Math.max(texAvg[ch], .01), .45, 1.9)); return t.setRGB(...r.map(x => 1 + (x - 1) * k)); };
+  const leafMat = windify(new THREE.MeshStandardMaterial({ map: leafMap, color: tintFor(new THREE.Color(tr.color), .45), vertexColors: true, alphaTest: .5, side: THREE.DoubleSide, roughness: .85 }), U, .012);
+  const leaves = new THREE.Mesh(lg, leafMat); leaves.castShadow = true; leaves.receiveShadow = true;
+  leaves.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafMap, alphaTest: .5 });
+  group.add(leaves);
   return {
     group, leafMat, barkMat,
-    setFoliageColor(c) { const base = new THREE.Color(tr.color); leafMat.color.copy(lift(base.lerp(c, .7))); leafMat.emissive.copy(leafMat.color).multiplyScalar(.22); if (group.userData.core) group.userData.core.material.color.copy(leafMat.color).multiplyScalar(.72); },
-    setBark(t) { t.repeat.set(1.5, 1); barkMat.map = t; barkMat.needsUpdate = true; },
+    setFoliageColor(c) { leafMat.color.copy(tintFor(c, .8)); },
+    setBark(t) { t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.repeat.set(1.5, 1.5); barkMat.map = t; barkMat.normalScale.set(.6, .6); barkMat.needsUpdate = true; },
   };
 }
