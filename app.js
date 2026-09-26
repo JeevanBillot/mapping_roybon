@@ -311,8 +311,8 @@ async function sync(full = false) {
     if (r.ok) {
       const { trees } = await r.json(); const byId = Object.fromEntries((await getAll('trees')).map(t => [t.id, t]));
       const deleted = new Set(settings.pendingDeletes);
-      for (const rt of trees) { if (deleted.has(rt.id)) continue; const lt = byId[rt.id]; if (!lt || (rt.updated || 0) > (lt.updated || 0)) await put('trees', Object.assign({}, rt, { synced: true })); }
-      if (full) { const remote = new Set(trees.map(t => t.id)); for (const lt of Object.values(byId)) if (lt.synced && !remote.has(lt.id)) { await del('trees', lt.id); } }
+      for (const rt of trees) { if (rt.kind === 'feature' || !rt.species) continue; if (deleted.has(rt.id)) continue; const lt = byId[rt.id]; if (!lt || (rt.updated || 0) > (lt.updated || 0)) await put('trees', Object.assign({}, rt, { synced: true })); }
+      if (full) { const remote = new Set(trees.filter(t => t.kind !== 'feature').map(t => t.id)); for (const lt of Object.values(byId)) if (lt.synced && !remote.has(lt.id)) { await del('trees', lt.id); } }
     } else if (r.status === 500) toast('Cloud : binding KV manquant sur le Worker', 4000);
     else if (r.status === 401) toast('Cloud : mot de passe du relais incorrect', 4000);
     if (full) toast('Synchronisation terminée');

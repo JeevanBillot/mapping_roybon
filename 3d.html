@@ -135,7 +135,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 try {
 // ---------- 1. Arbres, emprise, repère local ----------
 progress('Chargement des arbres…', .04);
-const { trees } = await D.loadTrees();
+const { trees, features = [] } = await D.loadTrees();
 let lat0, lon0;
 if (trees.length) { lat0 = trees.reduce((s, t) => s + t.lat, 0) / trees.length; lon0 = trees.reduce((s, t) => s + t.lon, 0) / trees.length; }
 else { [lat0, lon0] = D.DEFAULT_CENTER; warn('Aucun arbre enregistré : affichage du terrain seul.'); }
@@ -248,7 +248,10 @@ function minRect(pts) { // rectangle orienté d'aire minimale (enveloppe convexe
   return best;
 }
 const courts = [];
-for (const sp of sports) {
+// Courts placés à la main sur le plan 2D, prioritaires sur ceux de la BD TOPO
+const manualCourts = features.filter(f => f.type === 'tennis' && f.ring && f.ring.length >= 4).map(f => ({ rings: [f.ring], nature: 'Terrain de tennis', manual: true }));
+const nearManual = sp => manualCourts.some(m => { const a = m.rings[0], b = sp.rings[0], ca = a.reduce((s2, p) => [s2[0] + p[0] / a.length, s2[1] + p[1] / a.length], [0, 0]), cb = b.reduce((s2, p) => [s2[0] + p[0] / b.length, s2[1] + p[1] / b.length], [0, 0]); return Math.hypot((ca[0] - cb[0]) * mLat, (ca[1] - cb[1]) * mLon) < 25; });
+for (const sp of [...manualCourts, ...sports.filter(sp => !nearManual(sp))]) {
   if (!/tennis/i.test(sp.nature + ' ' + sp.detail)) continue;
   const ring = sp.rings[0].map(([la, lo]) => toLocal(la, lo)); if (ring.length < 3 || ring.every(p => Math.abs(p.x) > S || Math.abs(p.z) > S)) continue;
   const r = minRect(ring); if (r.L < 8 || r.W < 5 || r.L > 80) continue;

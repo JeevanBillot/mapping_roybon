@@ -32,7 +32,23 @@ window.RoybonData = (() => {
         if (r.ok) { const { trees } = await r.json(); for (const t of trees) if (!byId[t.id] || (t.updated || 0) > (byId[t.id].updated || 0)) byId[t.id] = t; source = 'cloud'; }
       } catch (e) { /* hors ligne */ }
     }
-    return { trees: Object.values(byId).filter(t => t.lat && t.lon && t.species), source };
+    const all = Object.values(byId);
+    const features = {}; for (const f of localFeatures()) features[f.id] = f;
+    for (const f of all.filter(t => t.kind === 'feature')) if (!features[f.id] || (f.updated || 0) >= (features[f.id].updated || 0)) features[f.id] = f;
+    return { trees: all.filter(t => t.kind !== 'feature' && t.lat && t.lon && t.species), features: Object.values(features).filter(f => !f.deleted), source };
+  }
+  // Éléments placés à la main (court de tennis…) : cloud + copie locale
+  function localFeatures() { try { return JSON.parse(localStorage.getItem('features') || '[]'); } catch (e) { return []; } }
+  function storeLocal(list) { try { localStorage.setItem('features', JSON.stringify(list)); } catch (e) {} }
+  async function saveFeature(f) {
+    f = Object.assign({ kind: 'feature' }, f, { updated: Date.now() });
+    storeLocal(localFeatures().filter(x => x.id !== f.id).concat([f]));
+    if (!cfg.proxyUrl) return { ok: true, cloud: false };
+    try { const r = await api(`/sync/tree/${f.id}`, { method: 'PUT', body: JSON.stringify(f), headers: { 'Content-Type': 'application/json' } }); return { ok: r.ok, cloud: r.ok }; } catch (e) { return { ok: true, cloud: false }; }
+  }
+  async function deleteFeature(id) {
+    storeLocal(localFeatures().filter(x => x.id !== id));
+    if (cfg.proxyUrl) { try { await api(`/sync/tree/${id}`, { method: 'DELETE' }); } catch (e) {} }
   }
 
   const urls = new Map();
@@ -72,5 +88,5 @@ window.RoybonData = (() => {
     const h = +(t.height || 0) || height; // hauteur mesurée si disponible
     return { genus: g || null, shape, height: h, crown: crown * (h / height), color };
   }
-  return { cfg, DEFAULT_CENTER, loadTrees, photoURL, photoIds, name, colorFor, traits };
+  return { cfg, DEFAULT_CENTER, loadTrees, saveFeature, deleteFeature, photoURL, photoIds, name, colorFor, traits };
 })();
