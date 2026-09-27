@@ -396,6 +396,7 @@ function measure() {
   rows = trees.map(t => {
     const tr = D.traits(t); let h = +t.height || tr.height, rad = tr.crown, outline = null, measured = false;
     if (lidar && lidar.chm && !(+t.height > 0)) { const m = lidar.crownAt(t.lat, t.lon, Math.max(2.5, Math.min(5, t.corrected ? 2.5 : (t.acc || 4)))); if (m && m.height > 2) { h = m.height; rad = Math.max(1, Math.min(14, m.radius)); outline = m.outline; measured = true; } }
+    if (+t.crownW > 0) { rad = +t.crownW / 2; outline = null; } // largeur saisie à la main
     return { t, tr, h, rad, outline, measured, color: colors[D.name(t)] || '#5f8a3d' };
   });
   // Numérotation stable : par espèce, puis du nord au sud

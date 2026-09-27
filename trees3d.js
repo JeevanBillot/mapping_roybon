@@ -200,19 +200,22 @@ function crownNormals(lg, center, ry) {
 }
 
 // ---------- Arbre complet ----------
-function makeTree({ tr, h, rad, seed, U, renderer, lite = false, density = 1 }) {
-  density = clamp(+density || 1, .3, 2);
+function makeTree({ tr, h, rad, seed, U, renderer, lite = false, density = 1, branches = 1, fitWidth = false }) {
+  density = clamp(+density || 1, .3, 2); branches = clamp(+branches || 1, .4, 2.5);
   let form = tr.form || 'broad';
   if (form === 'columnar' && (tr.leaf === 'scale' || tr.leaf === 'needle')) form = 'columnarEver';
-  const o = FORMS[form] || FORMS.broad, leafKind = LEAF[tr.leaf] ? tr.leaf : (o.type === 'evergreen' ? 'needle' : 'ovate');
-  // 1re passe : taille brute → rayon de tronc réaliste ; 2e passe définitive
+  let o = FORMS[form] || FORMS.broad; const leafKind = LEAF[tr.leaf] ? tr.leaf : (o.type === 'evergreen' ? 'needle' : 'ovate');
+  // Plus ou moins de branches : charpentières (et branches secondaires des feuillus)
+  if (branches !== 1) o = { ...o, children: o.children.map((c, i) => i === 0 ? Math.max(1, Math.round(c * branches)) : i === 1 && o.type === 'deciduous' ? Math.max(1, Math.round(c * Math.sqrt(branches))) : c) };
+  // 1re passe : taille brute → rayon de tronc réaliste (et, si une largeur est imposée, branches allongées) ; 2e passe définitive
   let { bg, lg } = generate(o, seed, lite, density); bg.computeBoundingBox(); lg.computeBoundingBox();
   const bb0 = bg.boundingBox.clone().union(lg.boundingBox), s0 = h / Math.max(bb0.max.y, .1);
+  if (fitWidth) { const hw0 = Math.max(bb0.max.x - bb0.min.x, bb0.max.z - bb0.min.z) / 2 * s0, lk = clamp(Math.sqrt(clamp(rad / Math.max(hw0, .1), .4, 3)), .6, 1.7); o = { ...o, length: o.length.map((L, i) => i ? L * lk : L) }; }
   const wantR = clamp(h * o.trunkR, .05, .75), o2 = { ...o, radius: [wantR / s0, ...o.radius.slice(1)] };
   bg.dispose(); lg.dispose(); ({ bg, lg } = generate(o2, seed, lite, density));
   bg.computeBoundingBox(); lg.computeBoundingBox();
   const bb = bg.boundingBox.clone().union(lg.boundingBox), s = h / Math.max(bb.max.y, .1);
-  const halfW = Math.max((bb.max.x - bb.min.x), (bb.max.z - bb.min.z)) / 2 * s, kx = clamp(rad / Math.max(halfW, .1), .7, 1.4);
+  const halfW = Math.max((bb.max.x - bb.min.x), (bb.max.z - bb.min.z)) / 2 * s, kx = clamp(rad / Math.max(halfW, .1), fitWidth ? .55 : .7, fitWidth ? 1.8 : 1.4);
   const cx = (bb.max.x + bb.min.x) / 2, cz = (bb.max.z + bb.min.z) / 2;
   const M = new THREE.Matrix4().makeScale(s * kx, s, s * kx).multiply(new THREE.Matrix4().makeTranslation(-cx * .6, 0, -cz * .6));
   bg.applyMatrix4(M); lg.applyMatrix4(M); lg.computeBoundingBox(); bg.computeBoundingSphere(); lg.computeBoundingSphere();

@@ -128,6 +128,8 @@ body:not(.ui-hidden) #show-ui { display:none; }
     <div class="edit">
       <label>Hauteur <b id="ed-hv"></b><button id="ed-auto" class="mini hidden">Auto</button></label><input id="ed-h" type="range" min="1" max="45" step="0.5">
       <label>Feuillage <b id="ed-dv"></b></label><input id="ed-d" type="range" min="0.3" max="2" step="0.1">
+      <label>Branches <b id="ed-bv"></b></label><input id="ed-b" type="range" min="0.4" max="2.5" step="0.1">
+      <label>Largeur <b id="ed-wv"></b><button id="ed-wauto" class="mini hidden">Auto</button></label><input id="ed-w" type="range" min="1" max="30" step="0.5">
       <button id="ed-save" class="dup save" disabled>Enregistrer</button>
     </div>
     <div class="acts"><button id="card-move" class="dup">Déplacer</button><button id="card-dup" class="dup">Dupliquer</button></div></div>
@@ -864,7 +866,8 @@ const surveyed = trees.map(t => {
   let h = tr.height, rad = tr.crown, measured = false, lidarH = null;
   if (m && m.height > 2) { h = lidarH = m.height; rad = clamp(m.radius, 1, 14); measured = true; lidarTops.push(m); }
   if (+t.height > 0) { h = +t.height; if (!measured) rad = tr.crown; } // hauteur saisie à la main : prioritaire
-  return { t, tr, h, rad, measured, lidarH };
+  if (+t.crownW > 0) rad = +t.crownW / 2;                                // largeur saisie à la main
+  return { t, tr, h, rad, measured, lidarH, autoRad: m && m.height > 2 ? clamp(m.radius, 1, 14) : tr.crown };
 });
 const pickables = [], labelled = [];
 const trunkBox = new THREE.Group(); scene.add(trunkBox);
@@ -873,16 +876,16 @@ for (const s of surveyed) {
   const h = s.h, cb = h * CROWN_BASE[shape], ch = h - cb;
   const g = new THREE.Group(); g.userData.s = s;
   // Arbre détaillé : silhouette et feuillage de l'espèce ; couleur et écorce reprises des photos si disponibles
-  const det = buildDetailedTree({ tr, h, rad: s.rad, seed: t.id, U, renderer, lite: LITE, density: t.density });
+  const det = buildDetailedTree({ tr, h, rad: s.rad, seed: t.id, U, renderer, lite: LITE, density: t.density, branches: t.branches, fitWidth: +t.crownW > 0 });
   g.add(det.group); s.det = det; s.g = g;
   const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); g.rotation.y = r() * 6.28;
   const L = { s, pos: new THREE.Vector3(p.x, g.position.y + h + .8, p.z) }; s.lbl = L;
   scene.add(g); pickables.push(g); labelled.push(L);
 }
 // Reconstruit un arbre après réglage (hauteur, densité du feuillage), photos conservées
-function rebuildTree(s, h, density) {
+function rebuildTree(s, h, density, branches = +s.t.branches || 1, fitWidth = +s.t.crownW > 0) {
   const old = s.det.group; s.g.remove(old); old.traverse(o => { if (o.isMesh) { o.geometry.dispose(); } });
-  s.h = h; s.det = buildDetailedTree({ tr: s.tr, h, rad: s.rad, seed: s.t.id, U, renderer, lite: LITE, density });
+  s.h = h; s.det = buildDetailedTree({ tr: s.tr, h, rad: s.rad, seed: s.t.id, U, renderer, lite: LITE, density, branches, fitWidth });
   s.g.add(s.det.group); s.lbl.pos.y = s.g.position.y + h + .8;
   if (s.photoColor) s.det.setFoliageColor(s.photoColor); if (s.barkTex) s.det.setBark(s.barkTex);
 }
@@ -1035,26 +1038,38 @@ function showCard(s) {
   $('#card-move').onclick = () => D.toApp({ type: 'move', id: t.id });
   D.identifyUI($('#card-reid'), t, () => { // nouvelle espèce : port, feuillage, écorce et nom mis à jour
     s.tr = D.traits(t); $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
-    const h2 = +t.height > 0 ? +t.height : s.lidarH || s.tr.height; if (!s.measured) s.rad = s.tr.crown;
+    const h2 = +t.height > 0 ? +t.height : s.lidarH || s.tr.height; if (!s.measured) s.autoRad = s.tr.crown; if (!(+t.crownW > 0)) s.rad = s.autoRad;
     s.photoColor = s.photoColor || null; rebuildTree(s, h2, +t.density || 1);
     if (s.lbl.el) s.lbl.el.innerHTML = `<i style="background:${D.colorFor(t.species.sci || D.name(t))}"></i>${esc(D.name(t))}`;
   });
-  // Réglages : hauteur (auto = LiDAR ou hauteur typique) et densité du feuillage, aperçu immédiat
-  const hIn = $('#ed-h'), dIn = $('#ed-d'), auto = () => s.lidarH || s.tr.height;
-  let manualH = +t.height > 0 ? +t.height : null, dens = +t.density || 1;
-  const show = () => { $('#ed-hv').textContent = `${(manualH ?? auto()).toFixed(1).replace('.', ',')} m${manualH ? '' : ' (auto)'}`; $('#ed-dv').textContent = DENS(dens); $('#ed-auto').classList.toggle('hidden', !manualH); $('#ed-save').disabled = manualH === (+t.height > 0 ? +t.height : null) && dens === (+t.density || 1); };
-  hIn.value = manualH ?? auto(); dIn.value = dens; show();
+  // Réglages : hauteur et largeur (auto = LiDAR ou valeurs typiques), densité du feuillage, nombre de branches ; aperçu immédiat
+  const hIn = $('#ed-h'), dIn = $('#ed-d'), bIn = $('#ed-b'), wIn = $('#ed-w'), auto = () => s.lidarH || s.tr.height, autoW = () => s.autoRad * 2;
+  const saved = () => ({ h: +t.height > 0 ? +t.height : null, d: +t.density || 1, b: +t.branches || 1, w: +t.crownW > 0 ? +t.crownW : null });
+  let { h: manualH, d: dens, b: br, w: manualW } = saved();
+  const fmt = v => v.toFixed(1).replace('.', ',') + ' m';
+  const show = () => {
+    $('#ed-hv').textContent = fmt(manualH ?? auto()) + (manualH ? '' : ' (auto)'); $('#ed-wv').textContent = fmt(manualW ?? autoW()) + (manualW ? '' : ' (auto)');
+    $('#ed-dv').textContent = DENS(dens); $('#ed-bv').textContent = BRAN(br);
+    $('#ed-auto').classList.toggle('hidden', !manualH); $('#ed-wauto').classList.toggle('hidden', !manualW);
+    const o = saved(); $('#ed-save').disabled = manualH === o.h && dens === o.d && br === o.b && manualW === o.w;
+  };
+  const apply = () => { s.rad = manualW ? manualW / 2 : s.autoRad; rebuildTree(s, manualH ?? auto(), dens, br, !!manualW); };
+  hIn.value = manualH ?? auto(); dIn.value = dens; bIn.value = br; wIn.value = manualW ?? autoW(); show();
   hIn.oninput = () => { manualH = +hIn.value; show(); }; dIn.oninput = () => { dens = +dIn.value; show(); };
-  hIn.onchange = dIn.onchange = () => rebuildTree(s, manualH ?? auto(), dens);
-  $('#ed-auto').onclick = () => { manualH = null; hIn.value = auto(); show(); rebuildTree(s, auto(), dens); };
+  bIn.oninput = () => { br = +bIn.value; show(); }; wIn.oninput = () => { manualW = +wIn.value; show(); };
+  hIn.onchange = dIn.onchange = bIn.onchange = wIn.onchange = apply;
+  $('#ed-auto').onclick = () => { manualH = null; hIn.value = auto(); show(); apply(); };
+  $('#ed-wauto').onclick = () => { manualW = null; wIn.value = autoW(); show(); apply(); };
   $('#ed-save').onclick = async () => {
     $('#ed-save').disabled = true; $('#ed-save').textContent = 'Enregistrement…';
-    const r = await D.saveTree({ id: t.id, height: manualH || null, density: dens === 1 ? null : dens }, t);
-    Object.assign(t, { height: manualH || null, density: dens === 1 ? null : dens });
+    const patch = { height: manualH || null, density: dens === 1 ? null : dens, branches: br === 1 ? null : br, crownW: manualW || null };
+    const r = await D.saveTree({ id: t.id, ...patch }, t);
+    Object.assign(t, patch, { updated: Date.now() });
     $('#ed-save').textContent = r.cloud ? 'Enregistré' : 'Enregistré sur ce téléphone'; setTimeout(() => { $('#ed-save').textContent = 'Enregistrer'; show(); }, 1500);
   };
   $('#card').classList.remove('hidden');
 }
+const BRAN = b => b <= .6 ? 'beaucoup moins' : b <= .85 ? 'moins' : b < 1.15 ? 'normal' : b < 1.7 ? 'plus' : 'beaucoup plus';
 const DENS = d => d <= .55 ? 'très clairsemé' : d <= .85 ? 'clairsemé' : d < 1.15 ? 'normal' : d < 1.5 ? 'dense' : 'très dense';
 $('#card-close').onclick = () => $('#card').classList.add('hidden');
 let down = null;
