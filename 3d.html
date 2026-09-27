@@ -878,6 +878,7 @@ const surveyed = trees.map(t => {
     for (let i = 0; i < q.length; i++) { const p1 = q[i], p2 = q[(i + 1) % q.length], k = p1.x * p2.z - p2.x * p1.z; A += k; cx += (p1.x + p2.x) * k; cz += (p1.z + p2.z) * k; }
     A /= 2; if (Math.abs(A) > .5) { cx /= 6 * A; cz /= 6 * A; const o = toLocal(t.lat, t.lon); outlineRad = Math.sqrt(Math.abs(A) / Math.PI); if (!(+t.crownW > 0)) rad = outlineRad; lean = { x: cx - o.x, z: cz - o.z }; }
   }
+  if (+t.clumpN > 1 && !(+t.crownW > 0) && !outlineRad) rad = Math.max(1, rad * clamp(1.3 / Math.sqrt(t.clumpN), .45, 1)); // amas : couronnes plus petites
   return { t, tr, h, rad, measured, lidarH, lean, autoRad: outlineRad || (m && m.height > 2 ? clamp(m.radius, 1, 14) : tr.crown) };
 });
 const pickables = [], labelled = [];

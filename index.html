@@ -90,6 +90,10 @@
       <div><b id="chosen-common"></b><i id="chosen-sci"></i><span id="chosen-score" class="pill"></span></div>
     </div>
     <input id="note" type="text" placeholder="Note (facultatif : diamètre, état, remarque)">
+    <div class="card clump">
+      <div class="clump-row"><span>Nombre d'arbres de cette espèce à cet endroit</span><div class="nstep"><button id="n-minus" type="button" aria-label="Moins">−</button><b id="n-val">1</b><button id="n-plus" type="button" aria-label="Plus">+</button></div></div>
+      <label id="clump-r-l" class="hidden">Répartis autour du point, dans un rayon de <b id="r-val">1 m</b><input id="clump-r" type="range" min="0.5" max="5" step="0.5" value="1"></label>
+    </div>
     <button id="btn-save" class="big primary"><svg class="i"><use href="#i-check"/></svg>Enregistrer l'arbre</button>
     <button id="btn-back" class="link"><svg class="i"><use href="#i-arrow-left"/></svg>Changer l'espèce</button>
   </div>

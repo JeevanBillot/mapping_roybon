@@ -94,9 +94,13 @@ function setStep(n) { $$('.stepper li').forEach(li => { const s = +li.dataset.st
 
 // ---------- État de saisie ----------
 let current = null, miniMap = null, miniMarker = null, gpsAbort = null;
-let dupSrc = null;
+let dupSrc = null, clumpN = 1;
+function setClump(n) { clumpN = Math.max(1, Math.min(30, n)); $('#n-val').textContent = clumpN; show($('#clump-r-l'), clumpN > 1); }
+$('#n-minus').addEventListener('click', () => { setClump(clumpN - 1); haptic(); });
+$('#n-plus').addEventListener('click', () => { setClump(clumpN + 1); haptic(); });
+$('#clump-r').addEventListener('input', () => { $('#r-val').textContent = `${String(+$('#clump-r').value).replace('.', ',')} m`; });
 function resetCapture() {
-  current = null; dupSrc = null; show($('#dup-banner'), false); setStep(1); setTimeout(reloadIfIdle, 300);
+  current = null; dupSrc = null; show($('#dup-banner'), false); setClump(1); setStep(1); setTimeout(reloadIfIdle, 300);
   show($('#step-gps')); show($('#gps-card')); show($('#gps-status'), false); show($('#pos-card'), false); show($('#btn-gps'));
   show($('#step-photos'), false); show($('#step-save'), false); show($('#btn-cancel'), false);
   $$('.photo-slot').forEach(s => { s.classList.remove('filled'); s.querySelector('img').src = ''; s.querySelector('input').value = ''; });
@@ -336,12 +340,21 @@ $('#btn-back').addEventListener('click', () => { show($('#step-save'), false); s
 // ---------- Étape 3 : enregistrement ----------
 $('#btn-save').addEventListener('click', async () => {
   current.note = $('#note').value.trim();
-  const { photos, dupFrom, ...tree } = current;
+  const { photos, dupFrom, ...tree } = current, n = clumpN, R = +$('#clump-r').value || 1;
   tree.organs = Object.keys(photos); tree.updated = Date.now(); tree.synced = false;
   if (dupFrom) { tree.dupOf = dupFrom.id; if (!tree.organs.length) { const o = photoOwner(dupFrom); if (o) tree.photoFrom = { id: o.id, organs: o.organs }; } }
-  await put('trees', tree);
+  // Amas : n arbres répartis en tournesol dans un rayon R autour du point ; le premier porte les photos, les autres les reprennent
+  const mLat = 111132, mLon = 111320 * Math.cos(tree.lat * Math.PI / 180), lat0 = tree.lat, lon0 = tree.lon, list = [];
+  for (let i = 0; i < n; i++) {
+    const r = n > 1 ? R * Math.sqrt((i + .5) / n) : 0, a = i * 2.39996, t = i ? { ...tree, id: `${tree.id}-${i + 1}`, organs: [] } : tree;
+    t.lat = lat0 + r * Math.sin(a) / mLat; t.lon = lon0 + r * Math.cos(a) / mLon;
+    if (n > 1) { t.clump = tree.id; t.clumpN = n; }
+    if (i) { const o = tree.organs.length ? { id: tree.id, organs: tree.organs } : tree.photoFrom; if (o) t.photoFrom = o; }
+    list.push(t);
+  }
+  for (const t of list) await put('trees', t);
   for (const o of tree.organs) await put('photos', { id: `${tree.id}_${o}`, treeId: tree.id, organ: o, blob: photos[o], synced: false });
-  haptic(); toast(`${speciesName(tree)} enregistré`);
+  haptic(); toast(n > 1 ? `${n} ${speciesName(tree)} enregistrés` : `${speciesName(tree)} enregistré`);
   resetCapture(); updateCount(); treesChanged(); sync();
 });
 async function updateCount() {

@@ -126,3 +126,12 @@ body.immersive main { padding:0; max-width:none; overflow:hidden; }
 .seg.list-mode button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
 .banner.dup { background:var(--accent-soft); color:var(--fg); border-color:var(--accent2); }
 .banner.dup b { display:block; margin-bottom:2px; }
+
+/* Amas d'arbres (plusieurs sujets de la même espèce au même endroit) */
+.clump { padding:12px 14px; }
+.clump-row { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:.9rem; font-weight:600; }
+.nstep { display:flex; align-items:center; gap:10px; }
+.nstep button { width:40px; height:40px; margin:0; padding:0; border-radius:50%; font-size:1.3rem; }
+.nstep b { min-width:22px; text-align:center; font-size:1.15rem; }
+.clump label { font-size:.85rem; font-weight:500; color:var(--muted); }
+.clump input[type=range] { width:100%; accent-color:var(--accent); }

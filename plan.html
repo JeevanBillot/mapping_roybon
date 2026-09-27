@@ -435,6 +435,7 @@ function measure() {
       const eq = eqRadius(t.crownOutline), k = +t.crownW > 0 && eq > .1 ? (t.crownW / 2) / eq : 1, c = centroidLL(t.crownOutline);
       outline = t.crownOutline.map(([a, b]) => [c[0] + (a - c[0]) * k, c[1] + (b - c[1]) * k]); rad = eq * k;
     } else if (+t.crownW > 0) { rad = +t.crownW / 2; outline = null; } // largeur saisie à la main
+    if (+t.clumpN > 1 && !(+t.crownW > 0) && !t.crownOutline) { rad = Math.max(1, rad * Math.min(1, Math.max(.45, 1.3 / Math.sqrt(t.clumpN)))); outline = null; } // amas
     return { t, tr, h, rad, outline, measured, color: colors[D.name(t)] || '#5f8a3d' };
   });
   // Numérotation stable : par espèce, puis du nord au sud
