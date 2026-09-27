@@ -41,15 +41,49 @@ window.RoybonData = (() => {
   }
   // Modification d'un arbre (position, hauteur, densité) depuis le plan ou la 3D : téléphone + cloud
   const dbPut = (d, store, v) => new Promise(res => { if (!d) return res(false); const tx = d.transaction(store, 'readwrite'); tx.objectStore(store).put(v); tx.oncomplete = () => res(true); tx.onerror = () => res(false); });
-  async function saveTree(t) {
+  async function saveTree(t, base) { // base : l'arbre complet déjà chargé (évite d'écraser le cloud avec un arbre partiel)
     const d = await db(), local = await dbGet(d, 'trees', t.id);
-    const tree = Object.assign({}, local || {}, t, { updated: Date.now(), synced: false });
+    const ref = local && (!base || (local.updated || 0) >= (base.updated || 0)) ? local : base;
+    if (!ref) throw new Error('arbre introuvable');
+    const tree = Object.assign({}, ref, t, { updated: Date.now(), synced: false });
     await dbPut(d, 'trees', tree);
     let cloud = false;
     if (cfg.proxyUrl) { try { const { synced, ...body } = tree; const r = await api(`/sync/tree/${tree.id}`, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }); cloud = r.ok; } catch (e) {} }
     if (cloud) await dbPut(d, 'trees', Object.assign({}, tree, { synced: true }));
     toApp({ type: 'changed' });
     return { ok: true, cloud, tree };
+  }
+  // Relancer l'identification Pl@ntNet avec les photos de l'arbre
+  async function identify(t) {
+    if (!cfg.proxyUrl) throw new Error('relais non configuré (Réglages de l\'app)');
+    const o = photoOwner(t); if (!o) throw new Error('aucune photo pour cet arbre');
+    const fd = new FormData(); let n = 0;
+    for (const org of o.organs.slice(0, 5)) { const u = await photoURL(`${o.id}_${org}`); if (!u) continue; fd.append('images', await (await fetch(u)).blob(), org + '.jpg'); fd.append('organs', org); n++; }
+    if (!n) throw new Error('photos introuvables (hors ligne ?)');
+    const r = await api('/identify?lang=fr&nb-results=5&include-related-images=true', { method: 'POST', body: fd });
+    if (r.status === 404) return [];
+    if (!r.ok) throw new Error('erreur ' + r.status);
+    return (await r.json()).results.slice(0, 5).map(x => ({ common: (x.species.commonNames || [])[0] || '', sci: x.species.scientificNameWithoutAuthor, family: x.species.family && x.species.family.scientificNameWithoutAuthor, score: x.score, source: 'plantnet', refImg: x.images && x.images[0] && x.images[0].url ? x.images[0].url.s : '' }));
+  }
+  /* Bloc « Réidentifier l'espèce » dans une fiche : bouton, résultats, choix enregistré ; onChosen(tree) après enregistrement */
+  function identifyUI(box, t, onChosen) {
+    const e = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    box.innerHTML = '<button class="dup reid">Réidentifier l\'espèce</button><div class="idst"></div><ul class="idres"></ul>';
+    const st = box.querySelector('.idst'), ul = box.querySelector('.idres');
+    box.querySelector('.reid').onclick = async () => {
+      st.textContent = 'Identification en cours…'; ul.innerHTML = '';
+      let res; try { res = await identify(t); } catch (err) { st.textContent = 'Impossible : ' + err.message; return; }
+      if (!res.length) { st.textContent = 'Aucune espèce reconnue.'; return; }
+      st.textContent = 'Touche la bonne espèce :';
+      ul.innerHTML = res.map((x, i) => `<li data-i="${i}" class="${t.species && t.species.sci === x.sci ? 'cur' : ''}">${x.refImg ? `<img src="${e(x.refImg)}" alt="">` : '<i></i>'}<span><b>${e(x.common || x.sci)}</b><em>${e(x.sci)}</em></span><small>${Math.round(x.score * 100)} %</small></li>`).join('');
+      ul.querySelectorAll('li').forEach(li => li.onclick = async () => {
+        const sp = res[+li.dataset.i]; if (t.species && t.species.sci === sp.sci) { st.textContent = 'C\'est déjà l\'espèce enregistrée.'; return; }
+        st.textContent = 'Enregistrement…';
+        const r = await saveTree({ id: t.id, species: sp }, t); t.species = sp; t.updated = Date.now();
+        st.textContent = r.cloud ? `Espèce changée : ${sp.common || sp.sci}` : `Espèce changée sur ce téléphone : ${sp.common || sp.sci}`; ul.innerHTML = '';
+        onChosen && onChosen(t);
+      });
+    };
   }
   // Éléments placés à la main (court de tennis…) : cloud + copie locale
   function localFeatures() { try { return JSON.parse(localStorage.getItem('features') || '[]'); } catch (e) { return []; } }
@@ -126,5 +160,5 @@ window.RoybonData = (() => {
     const h = +(t.height || 0) || height; // hauteur mesurée si disponible
     return { genus: g || null, shape, height: h, crown: crown * (h / height), color, form, leaf, bark };
   }
-  return { cfg, DEFAULT_CENTER, MODELS, saveTree, loadTrees, saveFeature, deleteFeature, photoURL, photoIds, photoOwner, embedded, toApp, name, colorFor, traits };
+  return { cfg, DEFAULT_CENTER, MODELS, saveTree, identify, identifyUI, loadTrees, saveFeature, deleteFeature, photoURL, photoIds, photoOwner, embedded, toApp, name, colorFor, traits };
 })();

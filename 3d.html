@@ -64,6 +64,16 @@ body:not(.ui-hidden) #show-ui { display:none; }
 .card .save { display:flex; background:var(--accent); color:#fff; } .card .save:disabled { opacity:.45; cursor:default; }
 .card .acts { display:none; gap:6px; } .embedded .card .acts { display:flex; } .card .acts .dup { flex:1; display:flex; }
 .card { max-height:calc(100% - 24px); overflow-y:auto; }
+#goto { position:fixed; z-index:25; transform:translate(-50%, -135%); display:flex; align-items:center; gap:6px; border:0; border-radius:20px; padding:9px 14px; background:var(--accent); color:#fff; font:700 .85rem system-ui; font-family:inherit; box-shadow:var(--shadow); cursor:pointer; white-space:nowrap; }
+#goto .i { width:16px; height:16px; }
+.reidbox { margin-top:10px; } .reidbox .reid { display:flex; }
+.reidbox .idst { font-size:.8rem; color:var(--muted); margin-top:6px; }
+.reidbox .idres { list-style:none; margin:6px 0 0; padding:0; display:grid; gap:4px; }
+.reidbox .idres li { display:flex; align-items:center; gap:8px; padding:5px; border-radius:10px; background:var(--accent-soft); cursor:pointer; font-size:.8rem; }
+.reidbox .idres li.cur { outline:2px solid var(--accent); }
+.reidbox .idres img, .reidbox .idres i { width:34px; height:34px; border-radius:8px; object-fit:cover; flex:none; background:var(--line); }
+.reidbox .idres span { flex:1; min-width:0; display:flex; flex-direction:column; } .reidbox .idres em { color:var(--muted); font-size:.75rem; }
+.reidbox .idres small { font-weight:700; color:var(--accent); }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
@@ -106,6 +116,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
 </div>
 
 <div id="tip" class="hidden"></div>
+<button id="goto" class="hidden"><svg class="i"><use href="#i-walk"/></svg>Me balader ici</button>
 <div id="cross" class="hidden"></div>
 <div id="joy" class="hidden"><div></div></div>
 
@@ -113,6 +124,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
   <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
   <div class="ph" id="card-ph"></div>
   <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl>
+    <div id="card-reid" class="reidbox"></div>
     <div class="edit">
       <label>Hauteur <b id="ed-hv"></b><button id="ed-auto" class="mini hidden">Auto</button></label><input id="ed-h" type="range" min="1" max="45" step="0.5">
       <label>Feuillage <b id="ed-dv"></b></label><input id="ed-d" type="range" min="0.3" max="2" step="0.1">
@@ -964,14 +976,14 @@ function setMode(m, init = false) {
   if (m === 'walk') {
     const t = orbit.target; camera.position.set(t.x, groundAt(t.x, t.z) + EYE, t.z);
     const d = new THREE.Vector3(); camera.getWorldDirection(d); yaw = Math.atan2(-d.x, -d.z); pitch = 0;
-    $('#help').textContent = isTouch ? 'Joystick pour avancer, glisse ailleurs pour regarder. Vise un arbre et touche-le pour sa fiche.' : 'Clique pour prendre la souris. ZQSD ou flèches pour marcher, Maj pour courir, Échap pour libérer. Clic sur un arbre pour sa fiche.';
+    $('#help').textContent = isTouch ? 'Joystick pour avancer, glisse ailleurs pour regarder. Touche le sol pour y marcher, un arbre pour sa fiche.' : 'Clique pour prendre la souris. ZQSD ou flèches pour marcher, Maj pour courir, Échap pour libérer. Clic sur un arbre pour sa fiche.';
   } else {
     if (document.pointerLockElement) document.exitPointerLock();
     if (!init) { const d = new THREE.Vector3(); camera.getWorldDirection(d); const tx = camera.position.x + d.x * 30, tz = camera.position.z + d.z * 30; orbit.target.set(tx, groundAt(tx, tz), tz); camera.position.y += 40; orbit.update(); }
-    $('#help').textContent = isTouch ? 'Un doigt pour tourner, deux pour zoomer et déplacer. Touche un arbre pour sa fiche.' : 'Glisser pour tourner, clic droit pour déplacer, molette pour zoomer. Clic sur un arbre pour sa fiche.';
+    $('#help').textContent = isTouch ? 'Un doigt pour tourner, deux pour zoomer et déplacer. Touche un arbre pour sa fiche, le sol pour t\'y balader.' : 'Glisser pour tourner, clic droit pour déplacer, molette pour zoomer. Clic sur un arbre pour sa fiche ; double-clic au sol pour s\'y balader.';
   }
 }
-$('#m-orbit').onclick = () => setMode('orbit'); $('#m-walk').onclick = () => setMode('walk');
+$('#m-orbit').onclick = () => { fly = null; marker.visible = false; setMode('orbit'); }; $('#m-walk').onclick = () => setMode('walk');
 let showLabels = true;
 $('#t-labels').onclick = e => { showLabels = !showLabels; e.currentTarget.classList.toggle('on', showLabels); };
 $('#t-others').onclick = e => { others.visible = !others.visible; e.currentTarget.classList.toggle('on', others.visible); };
@@ -1021,6 +1033,12 @@ function showCard(s) {
   for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (u) { const img = new Image(); img.src = u; ph.appendChild(img); } });
   $('#card-dup').onclick = () => D.toApp({ type: 'dup', id: t.id });
   $('#card-move').onclick = () => D.toApp({ type: 'move', id: t.id });
+  D.identifyUI($('#card-reid'), t, () => { // nouvelle espèce : port, feuillage, écorce et nom mis à jour
+    s.tr = D.traits(t); $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
+    const h2 = +t.height > 0 ? +t.height : s.lidarH || s.tr.height; if (!s.measured) s.rad = s.tr.crown;
+    s.photoColor = s.photoColor || null; rebuildTree(s, h2, +t.density || 1);
+    if (s.lbl.el) s.lbl.el.innerHTML = `<i style="background:${D.colorFor(t.species.sci || D.name(t))}"></i>${esc(D.name(t))}`;
+  });
   // Réglages : hauteur (auto = LiDAR ou hauteur typique) et densité du feuillage, aperçu immédiat
   const hIn = $('#ed-h'), dIn = $('#ed-d'), auto = () => s.lidarH || s.tr.height;
   let manualH = +t.height > 0 ? +t.height : null, dens = +t.density || 1;
@@ -1031,7 +1049,7 @@ function showCard(s) {
   $('#ed-auto').onclick = () => { manualH = null; hIn.value = auto(); show(); rebuildTree(s, auto(), dens); };
   $('#ed-save').onclick = async () => {
     $('#ed-save').disabled = true; $('#ed-save').textContent = 'Enregistrement…';
-    const r = await D.saveTree({ id: t.id, height: manualH || null, density: dens === 1 ? null : dens });
+    const r = await D.saveTree({ id: t.id, height: manualH || null, density: dens === 1 ? null : dens }, t);
     Object.assign(t, { height: manualH || null, density: dens === 1 ? null : dens });
     $('#ed-save').textContent = r.cloud ? 'Enregistré' : 'Enregistré sur ce téléphone'; setTimeout(() => { $('#ed-save').textContent = 'Enregistrer'; show(); }, 1500);
   };
@@ -1041,11 +1059,44 @@ const DENS = d => d <= .55 ? 'très clairsemé' : d <= .85 ? 'clairsemé' : d < 
 $('#card-close').onclick = () => $('#card').classList.add('hidden');
 let down = null;
 renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+// Aller à un endroit : en survol, toucher le sol puis « Me balader ici » (double-clic à la souris) ; en balade tactile, toucher le sol pour y marcher
+const gotoEl = $('#goto'); let gotoPt = null, fly = null;
+const marker = new THREE.Mesh(new THREE.RingGeometry(.55, .85, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: .95, depthTest: false }));
+marker.renderOrder = 20; marker.visible = false; scene.add(marker);
+function groundHit(cx, cy) { ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); const h = ray.intersectObject(terrain, false)[0]; return h && Math.abs(h.point.x) < S && Math.abs(h.point.z) < S ? h.point.clone() : null; }
+function walkTo(pt) {
+  gotoEl.classList.add('hidden'); gotoPt = null;
+  const p0 = camera.position.clone(), q0 = camera.quaternion.clone(), dx = pt.x - p0.x, dz = pt.z - p0.z, yaw1 = Math.atan2(-dx, -dz);
+  if (mode !== 'walk') { orbit.target.copy(pt); setMode('walk'); }
+  const p1 = new THREE.Vector3(pt.x, groundAt(pt.x, pt.z) + EYE, pt.z), q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw1, 0, 'YXZ'));
+  camera.position.copy(p0); camera.quaternion.copy(q0);
+  fly = { p0, q0, p1, q1, yaw1, t: 0, dur: clamp(p0.distanceTo(p1) / 25, .8, 3) };
+  marker.position.set(pt.x, groundAt(pt.x, pt.z) + .05, pt.z); marker.visible = true;
+}
+function stepFly(dt) {
+  fly.t = Math.min(1, fly.t + dt / fly.dur); const k = fly.t * fly.t * (3 - 2 * fly.t);
+  camera.position.lerpVectors(fly.p0, fly.p1, k); camera.position.y = Math.max(camera.position.y, groundAt(camera.position.x, camera.position.z) + EYE);
+  camera.quaternion.slerpQuaternions(fly.q0, fly.q1, k);
+  if (fly.t >= 1) { yaw = fly.yaw1; pitch = 0; fly = null; marker.visible = false; }
+}
+function offerGoto(cx, cy) {
+  const pt = groundHit(cx, cy); if (!pt) { gotoEl.classList.add('hidden'); marker.visible = false; return; }
+  gotoPt = pt; marker.position.set(pt.x, pt.y + .05, pt.z); marker.visible = true;
+  gotoEl.style.left = cx + 'px'; gotoEl.style.top = cy + 'px'; gotoEl.classList.remove('hidden');
+}
+gotoEl.onclick = () => gotoPt && walkTo(gotoPt);
+orbit.addEventListener('start', () => { gotoEl.classList.add('hidden'); if (!fly) marker.visible = false; });
+renderer.domElement.addEventListener('dblclick', e => { if (mode !== 'orbit' || isTouch) return; const pt = groundHit(e.clientX, e.clientY); if (pt) walkTo(pt); });
 renderer.domElement.addEventListener('pointerup', e => {
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
   if (mode === 'walk' && !isTouch && !document.pointerLockElement) { renderer.domElement.requestPointerLock(); return; }
+  if (mode === 'walk' && isTouch) { // arbre touché : fiche ; sinon marcher jusqu'au point touché
+    const p = pick(e.clientX, e.clientY); if (p && p.dist < 45) return showCard(p.s);
+    const pt = groundHit(e.clientX, e.clientY); if (pt && pt.distanceTo(camera.position) < 250) walkTo(pt); return;
+  }
   const p = mode === 'walk' ? pick() : pick(e.clientX, e.clientY);
-  if (p && (mode === 'orbit' || p.dist < 45)) showCard(p.s);
+  if (p && (mode === 'orbit' || p.dist < 45)) { gotoEl.classList.add('hidden'); return showCard(p.s); }
+  if (mode === 'orbit') offerGoto(e.clientX, e.clientY);
 });
 const tip = $('#tip');
 renderer.domElement.addEventListener('mousemove', e => {
@@ -1059,7 +1110,8 @@ renderer.domElement.addEventListener('mousemove', e => {
 const clock = new THREE.Clock(); let frame = 0;
 function loop() {
   const dt = Math.min(.05, clock.getDelta()); U.time.value += dt;
-  if (mode === 'orbit') orbit.update();
+  if (fly) stepFly(dt);
+  else if (mode === 'orbit') orbit.update();
   else {
     const run = keys.ShiftLeft || keys.ShiftRight ? 9 : 3.5;
     const f = (keys.KeyW || keys.KeyZ || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y;
