@@ -471,7 +471,7 @@ function buildPrint() {
       $('#overlays [data-o=chm]').disabled = false;
       measure(); renderSpecies(); draw();
       const tops = rows.filter(r => r.measured);
-      const det = lidar.detectTrees({ minHeight: 3, max: 3000, exclude: (la, lo) => Lm.inBuildings(la, lo, buildings, 1.5 / mLat) || trees.some(t => Math.hypot((t.lat - la) * mLat, (t.lon - lo) * mLon) < 3) || tops.some(r => r.outline && Math.hypot((r.t.lat - la) * mLat, (r.t.lon - lo) * mLon) < r.rad * .8) });
+      const det = lidar.detectTrees({ minHeight: 3, max: 3000, exclude: (la, lo) => Lm.inBuildings(la, lo, buildings, 1.5 / mLat) || ((features.find(f => f.id === 'feature-removed-trees') || {}).points || []).some(([a, b]) => Math.hypot((a - la) * mLat, (b - lo) * mLon) < 2) || trees.some(t => Math.hypot((t.lat - la) * mLat, (t.lon - lo) * mLon) < 3) || tops.some(r => r.outline && Math.hypot((r.t.lat - la) * mLat, (r.t.lon - lo) * mLon) < r.rad * .8) });
       for (const d of det) L.polygon(d.outline, { pane: 'others', className: 'other', color: '#ffffff', weight: 1, dashArray: '3 3', fillColor: '#9fb89a', fillOpacity: .25, interactive: true }).bindTooltip(`Arbre non recensé · ${Math.round(d.height)} m`, { sticky: true }).addTo(ov.others);
       $('#overlays [data-o=others]').disabled = false;
       $('#sub').textContent = `${trees.length} arbres recensés · ${names.length} espèces · ${rows.filter(r => r.measured).length} mesurés au LiDAR · ${det.length} autres arbres visibles au LiDAR`;

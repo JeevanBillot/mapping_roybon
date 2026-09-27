@@ -74,6 +74,8 @@ body:not(.ui-hidden) #show-ui { display:none; }
 .reidbox .idres img, .reidbox .idres i { width:34px; height:34px; border-radius:8px; object-fit:cover; flex:none; background:var(--line); }
 .reidbox .idres span { flex:1; min-width:0; display:flex; flex-direction:column; } .reidbox .idres em { color:var(--muted); font-size:.75rem; }
 .reidbox .idres small { font-weight:700; color:var(--accent); }
+#card-del { display:none; } .card.other-mode #card-del { display:flex; margin-top:12px; background:#b3261e; color:#fff; } .card.other-mode #card-del.undo { background:var(--accent-soft); color:var(--accent); }
+.card.other-mode .edit, .card.other-mode .reidbox, .card.other-mode .acts { display:none !important; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
@@ -124,6 +126,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
   <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
   <div class="ph" id="card-ph"></div>
   <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl>
+    <button id="card-del" class="dup del">Supprimer cet arbre (mal placé)</button>
     <div id="card-reid" class="reidbox"></div>
     <div class="edit">
       <label>Hauteur <b id="ed-hv"></b><button id="ed-auto" class="mini hidden">Auto</button></label><input id="ed-h" type="range" min="1" max="45" step="0.5">
@@ -905,12 +908,15 @@ function rebuildTree(s, h, density, branches = +s.t.branches || 1, fitWidth = +s
 progress('Détection des autres arbres…', .82);
 const others = new THREE.Group(); scene.add(others);
 let nOthers = 0;
+// Arbres détectés supprimés à la main (mal placés) : liste de points partagée via le cloud
+const removedFeat = features.find(f => f.id === 'feature-removed-trees'), removedPts = removedFeat && Array.isArray(removedFeat.points) ? removedFeat.points.slice() : [];
 if (lidar.chm) {
   const dLat = 1.5 / mLat;
   const detected = lidar.detectTrees({
     minHeight: 3,
     exclude: (la, lo) => { if (Math.abs(la - lat0) * mLat > S || Math.abs(lo - lon0) * mLon > S) return true; if (inBuildings(la, lo, buildings, dLat)) return true;
       { const q = toLocal(la, lo); if (courts.some(C => { const [u, v] = C.toCourt(q.x, q.z); return Math.abs(u) < C.L / 2 + .5 && Math.abs(v) < C.W / 2 + .5; })) return true; if (lakeDepthAt(q.x, q.z) > 1.2) return true; const ns = nearestStream(q.x, q.z); if (ns && ns.d < ns.w * .4) return true; }
+      if (removedPts.some(([a, b]) => Math.hypot((a - la) * mLat, (b - lo) * mLon) < 2)) return true;
       return surveyed.some(s => Math.hypot((s.t.lat - la) * mLat, (s.t.lon - lo) * mLon) < Math.max(3.5, s.rad * .9)) || lidarTops.some(m => Math.hypot((m.lat - la) * mLat, (m.lon - lo) * mLon) < Math.max(3.5, m.radius * .9)); },
     max: isTouch ? 1200 : 2500,
   });
@@ -927,8 +933,9 @@ if (lidar.chm) {
     protos.forEach(([form, leaf, bark, color], v) => {
       const sub = list.filter((_, k) => k % protos.length === v); if (!sub.length) return;
       const P = treePrototype({ form, leaf, bark, color, seed: `proto${kind}${v}`, U, renderer, lite: true });
-      const [ti, li] = P.instanced(sub.length);
+      const [ti, li] = P.instanced(sub.length); ti.userData.list = li.userData.list = sub;
       sub.forEach((d, k) => {
+        d.refs = [[ti, k], [li, k]];
         const p = toLocal(d.lat, d.lon), r = rndOf(`${d.lat}${d.lon}`), sy = d.height / P.H0, sxz = clamp(clamp(d.radius, 1, 12) / P.rad0, sy * .6, sy * 1.6);
         dummy.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); dummy.rotation.set(0, r() * 6.28, 0); dummy.scale.set(sxz, sy, sxz); dummy.updateMatrix();
         ti.setMatrixAt(k, dummy.matrix); li.setMatrixAt(k, dummy.matrix);
@@ -941,14 +948,15 @@ if (lidar.chm) {
     const VAR = 4, groups = { round: [], conifer: [] };
     for (const d of far) (isConifer(d) ? groups.conifer : groups.round).push(d);
     const trunkTpl = new THREE.CylinderGeometry(.55, 1, 1, 7).translate(0, .5, 0);
-    const trunkI = new THREE.InstancedMesh(trunkTpl, barkMat, far.length); trunkI.castShadow = true; let ti = 0;
+    const trunkI = new THREE.InstancedMesh(trunkTpl, barkMat, far.length); trunkI.castShadow = true; let ti = 0; trunkI.userData.list = [];
     for (const shape of ['round', 'conifer']) {
       const list = groups[shape];
       for (let v = 0; v < VAR; v++) {
         const sub = list.filter((_, k) => k % VAR === v); if (!sub.length) continue;
         const geo = crownGeometry(shape, `var${shape}${v}`, '#ffffff', 1);
-        const im = new THREE.InstancedMesh(geo, crownMat, sub.length); im.castShadow = true;
+        const im = new THREE.InstancedMesh(geo, crownMat, sub.length); im.castShadow = true; im.userData.list = sub;
         sub.forEach((d, k) => {
+          d.refs = [[im, k], [trunkI, ti]]; trunkI.userData.list[ti] = d;
           const p = toLocal(d.lat, d.lon), g0 = groundAt(p.x, p.z) - .15, cb = d.height * (shape === 'conifer' ? .08 : .32), rad = clamp(d.radius, 1, 12);
           const r = rndOf(`${d.lat}${d.lon}`);
           dummy.position.set(p.x, g0 + cb, p.z); dummy.rotation.set(0, r() * 6.28, 0); dummy.scale.set(rad, d.height - cb, rad); dummy.updateMatrix(); im.setMatrixAt(k, dummy.matrix);
@@ -1027,7 +1035,7 @@ function pick(cx, cy) {
   let o = hit.object; while (o && !o.userData.s) o = o.parent; return o ? { s: o.userData.s, dist: hit.distance } : null;
 }
 function showCard(s) {
-  const t = s.t;
+  const t = s.t; $('#card').classList.remove('other-mode');
   $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
   const rows = [['Hauteur', `${Math.round(s.h)} m<span class="badge">${+t.height > 0 ? 'saisie' : s.measured ? 'mesurée LiDAR' : 'typique'}</span>`], ['Couronne', `${Math.round(s.rad * 2)} m de large`], ['Relevé', esc(new Date(t.date).toLocaleDateString('fr-FR'))]];
   if (t.species.score != null) rows.push(['Confiance', `${Math.round(t.species.score * 100)} %`]); if (t.note) rows.push(['Note', esc(t.note)]);
@@ -1072,6 +1080,34 @@ function showCard(s) {
 const BRAN = b => b <= .6 ? 'beaucoup moins' : b <= .85 ? 'moins' : b < 1.15 ? 'normal' : b < 1.7 ? 'plus' : 'beaucoup plus';
 const DENS = d => d <= .55 ? 'très clairsemé' : d <= .85 ? 'clairsemé' : d < 1.15 ? 'normal' : d < 1.5 ? 'dense' : 'très dense';
 $('#card-close').onclick = () => $('#card').classList.add('hidden');
+// Arbres détectés (LiDAR) : fiche simple avec suppression à l'unité
+function pickOther(cx, cy) {
+  if (!others.visible) return null;
+  if (cx == null) ndc.set(0, 0); else ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  for (const h of ray.intersectObject(others, true)) { const d = h.instanceId != null && h.object.userData.list && h.object.userData.list[h.instanceId]; if (d && !d.removed) return { d, dist: h.distance }; }
+  return null;
+}
+const zeroM = new THREE.Matrix4().makeScale(0, 0, 0);
+function setRemoved(d, on) {
+  d.removed = on;
+  for (const [m, i] of d.refs || []) { if (on) { d.saved = d.saved || []; const M = new THREE.Matrix4(); m.getMatrixAt(i, M); d.saved.push(M); m.setMatrixAt(i, zeroM); } else if (d.saved) m.setMatrixAt(i, d.saved.shift()); m.instanceMatrix.needsUpdate = true; }
+  if (!on) d.saved = null;
+}
+const saveRemoved = () => D.saveFeature({ id: 'feature-removed-trees', type: 'removedTrees', points: removedPts });
+function showOtherCard(d) {
+  $('#card').classList.add('other-mode');
+  $('#card-name').textContent = 'Arbre détecté (LiDAR)'; $('#card-sci').textContent = 'non recensé';
+  $('#card-dl').innerHTML = `<dt>Hauteur</dt><dd>${Math.round(d.height)} m</dd><dt>Couronne</dt><dd>${Math.round(d.radius * 2)} m de large</dd>`;
+  $('#card-ph').innerHTML = '';
+  const b = $('#card-del'); b.textContent = 'Supprimer cet arbre (mal placé)'; b.classList.remove('undo');
+  b.onclick = async () => {
+    if (!d.removed) { setRemoved(d, true); removedPts.push([d.lat, d.lon]); b.textContent = 'Annuler la suppression'; b.classList.add('undo'); }
+    else { setRemoved(d, false); const k = removedPts.findIndex(([a, c]) => a === d.lat && c === d.lon); if (k >= 0) removedPts.splice(k, 1); b.textContent = 'Supprimer cet arbre (mal placé)'; b.classList.remove('undo'); }
+    const r = await saveRemoved(); if (!r.cloud && D.cfg.proxyUrl) warn('Suppression enregistrée sur cet appareil seulement (hors ligne).');
+  };
+  $('#card').classList.remove('hidden');
+}
 let down = null;
 renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
 // Aller à un endroit : en survol, toucher le sol puis « Me balader ici » (double-clic à la souris) ; en balade tactile, toucher le sol pour y marcher
@@ -1107,10 +1143,13 @@ renderer.domElement.addEventListener('pointerup', e => {
   if (mode === 'walk' && !isTouch && !document.pointerLockElement) { renderer.domElement.requestPointerLock(); return; }
   if (mode === 'walk' && isTouch) { // arbre touché : fiche ; sinon marcher jusqu'au point touché
     const p = pick(e.clientX, e.clientY); if (p && p.dist < 45) return showCard(p.s);
+    const o = pickOther(e.clientX, e.clientY); if (o && o.dist < 45) return showOtherCard(o.d);
     const pt = groundHit(e.clientX, e.clientY); if (pt && pt.distanceTo(camera.position) < 250) walkTo(pt); return;
   }
   const p = mode === 'walk' ? pick() : pick(e.clientX, e.clientY);
   if (p && (mode === 'orbit' || p.dist < 45)) { gotoEl.classList.add('hidden'); return showCard(p.s); }
+  const o = mode === 'walk' ? pickOther() : pickOther(e.clientX, e.clientY);
+  if (o && (mode === 'orbit' || o.dist < 45)) { gotoEl.classList.add('hidden'); return showOtherCard(o.d); }
   if (mode === 'orbit') offerGoto(e.clientX, e.clientY);
 });
 const tip = $('#tip');
