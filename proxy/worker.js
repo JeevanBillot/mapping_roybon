@@ -32,24 +32,32 @@ export default {
 
     // ---- Synchronisation (KV) ----
     if (!env.TREES) return json({ message: 'KV binding TREES manquant' }, 500);
-    const readIndex = async () => (await env.TREES.get('index', 'json')) || {};
+    // Un enregistrement par arbre (clé « t:<id> ») : deux enregistrements simultanés ne peuvent plus s'écraser.
+    // L'ancien format (tout dans la clé « index ») est migré automatiquement au premier chargement.
+    async function allTrees() {
+      const legacy = await env.TREES.get('index', 'json');
+      if (legacy) { for (const t of Object.values(legacy)) if (t && t.id) await env.TREES.put(`t:${t.id}`, JSON.stringify(t)); await env.TREES.delete('index'); }
+      const keys = []; let cursor;
+      do { const l = await env.TREES.list({ prefix: 't:', cursor }); keys.push(...l.keys.map(k => k.name)); cursor = l.list_complete ? null : l.cursor; } while (cursor);
+      const out = {};
+      for (const t of await Promise.all(keys.map(k => env.TREES.get(k, 'json')))) if (t && t.id && (!out[t.id] || (t.updated || 0) >= (out[t.id].updated || 0))) out[t.id] = t;
+      if (legacy) for (const t of Object.values(legacy)) if (t && t.id && !out[t.id]) out[t.id] = t;
+      return Object.values(out);
+    }
 
     if (path === '/sync/trees' && req.method === 'GET') {
-      return json({ trees: Object.values(await readIndex()) });
+      return new Response(JSON.stringify({ trees: await allTrees() }), { headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
     }
     let m;
     if ((m = path.match(/^\/sync\/tree\/([\w-]+)$/))) {
-      const id = m[1];
-      const idx = await readIndex();
+      const id = m[1], key = `t:${id}`;
       if (req.method === 'PUT') {
-        const t = await req.json();
-        if (!idx[id] || (t.updated || 0) >= (idx[id].updated || 0)) idx[id] = t;
-        await env.TREES.put('index', JSON.stringify(idx));
-        return json({ ok: true, tree: idx[id] });
+        const t = await req.json(), cur = await env.TREES.get(key, 'json');
+        if (!cur || (t.updated || 0) >= (cur.updated || 0)) { await env.TREES.put(key, JSON.stringify(t)); return json({ ok: true, tree: t }); }
+        return json({ ok: true, tree: cur, stale: true });
       }
       if (req.method === 'DELETE') {
-        delete idx[id];
-        await env.TREES.put('index', JSON.stringify(idx));
+        await env.TREES.delete(key);
         const list = await env.TREES.list({ prefix: `photo:${id}_` });
         for (const k of list.keys) await env.TREES.delete(k.name);
         return json({ ok: true });

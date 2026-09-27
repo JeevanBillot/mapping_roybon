@@ -20,7 +20,7 @@ window.RoybonData = (() => {
     });
   }
   const dbGet = (db, store, key) => new Promise(res => { if (!db) return res(key === undefined ? [] : null); const s = db.transaction(store).objectStore(store); const r = key === undefined ? s.getAll() : s.get(key); r.onsuccess = () => res(r.result); r.onerror = () => res(null); });
-  const api = (path, opts = {}) => fetch(cfg.proxyUrl + path, Object.assign({}, opts, { headers: Object.assign({}, opts.headers || {}, cfg.appToken ? { 'X-App-Token': cfg.appToken } : {}) }));
+  const api = (path, opts = {}) => fetch(cfg.proxyUrl + path, Object.assign({ cache: 'no-store' }, opts, { headers: Object.assign({}, opts.headers || {}, cfg.appToken ? { 'X-App-Token': cfg.appToken } : {}) }));
 
   let dbP = null; const db = () => (dbP = dbP || openDB());
 
@@ -127,23 +127,23 @@ window.RoybonData = (() => {
     Prunus: ['round', 8, 4, '#6f9a45'], Malus: ['round', 7, 4, '#6d9744'], Pyrus: ['round', 10, 3.5, '#6a9442'], Sorbus: ['round', 10, 3.5, '#739e48'],
     Corylus: ['shrub', 5, 3, '#6e9a44'], Sambucus: ['shrub', 5, 3, '#6b9440'], Ilex: ['shrub', 8, 3, '#2f5a2a'], Buxus: ['shrub', 3, 1.5, '#2e5527'], Laurus: ['shrub', 7, 3, '#3b6530'],
     Magnolia: ['round', 10, 5, '#3f6d33'], Alnus: ['round', 18, 4.5, '#557f3a'], Catalpa: ['round', 12, 6, '#7aa84e'], Morus: ['round', 10, 5, '#6c9a42'], Ficus: ['round', 5, 3, '#5f8a3d'],
-    Betula: ['slender', 18, 3.5, '#8cb85a'], Populus: ['round', 28, 8, '#7ea94f'], Cupressus: ['columnar', 18, 2, '#2f4f2a'], Carpinus_fastigiata: ['columnar', 15, 3, '#6a9440'],
+    Betula: ['slender', 18, 3.5, '#8cb85a'], Populus: ['round', 28, 8, '#7ea94f'], Lagerstroemia: ['round', 6, 2.5, '#948454'], Cupressus: ['columnar', 18, 2, '#2f4f2a'], Carpinus_fastigiata: ['columnar', 15, 3, '#6a9440'],
     Salix: ['weeping', 14, 6, '#9cc26a'],
     Pinus: ['pine', 22, 5, '#355a2e'], Abies: ['conifer', 30, 4, '#274a28'], Picea: ['conifer', 30, 3.5, '#2a4d2a'], Cedrus: ['conifer', 25, 7, '#3c5f3f'],
     Larix: ['conifer', 25, 4, '#6f9a4f'], Pseudotsuga: ['conifer', 35, 4.5, '#2d502b'], Sequoiadendron: ['conifer', 40, 5, '#3a5a30'], Sequoia: ['conifer', 35, 4, '#3a5a30'],
     Thuja: ['columnar', 12, 2, '#3b6232'], Chamaecyparis: ['conifer', 15, 2.5, '#355d33'], Taxus: ['conifer', 10, 3, '#233f22'], Juniperus: ['columnar', 6, 1.5, '#3d5e3a'],
     Ginkgo: ['slender', 20, 4, '#9bbf55'], Liriodendron: ['round', 25, 6, '#76a24c'],
   };
-  const COMMON = [[/chêne/i, 'Quercus'], [/hêtre/i, 'Fagus'], [/charme/i, 'Carpinus'], [/châtaign/i, 'Castanea'], [/érable/i, 'Acer'], [/tilleul/i, 'Tilia'], [/frêne/i, 'Fraxinus'], [/orme/i, 'Ulmus'], [/platane/i, 'Platanus'], [/noyer/i, 'Juglans'], [/marronnier/i, 'Aesculus'], [/robinier|acacia/i, 'Robinia'], [/cerisier|prunier|merisier|laurier-cerise/i, 'Prunus'], [/pommier/i, 'Malus'], [/poirier/i, 'Pyrus'], [/sorbier/i, 'Sorbus'], [/noisetier/i, 'Corylus'], [/sureau/i, 'Sambucus'], [/houx/i, 'Ilex'], [/buis/i, 'Buxus'], [/laurier/i, 'Laurus'], [/magnolia/i, 'Magnolia'], [/aulne/i, 'Alnus'], [/bouleau/i, 'Betula'], [/peuplier/i, 'Populus'], [/cyprès/i, 'Cupressus'], [/saule/i, 'Salix'], [/(^|\s)pin(\s|$)/i, 'Pinus'], [/sapin/i, 'Abies'], [/épicéa/i, 'Picea'], [/cèdre/i, 'Cedrus'], [/mélèze/i, 'Larix'], [/douglas/i, 'Pseudotsuga'], [/séquoia/i, 'Sequoiadendron'], [/thuya/i, 'Thuja'], [/if\b/i, 'Taxus'], [/genévrier/i, 'Juniperus'], [/ginkgo/i, 'Ginkgo'], [/tulipier/i, 'Liriodendron']];
+  const COMMON = [[/chêne/i, 'Quercus'], [/hêtre/i, 'Fagus'], [/charme/i, 'Carpinus'], [/châtaign/i, 'Castanea'], [/érable/i, 'Acer'], [/tilleul/i, 'Tilia'], [/frêne/i, 'Fraxinus'], [/orme/i, 'Ulmus'], [/platane/i, 'Platanus'], [/noyer/i, 'Juglans'], [/marronnier/i, 'Aesculus'], [/robinier|acacia/i, 'Robinia'], [/cerisier|prunier|merisier|laurier-cerise/i, 'Prunus'], [/pommier/i, 'Malus'], [/poirier/i, 'Pyrus'], [/sorbier/i, 'Sorbus'], [/noisetier/i, 'Corylus'], [/sureau/i, 'Sambucus'], [/houx/i, 'Ilex'], [/buis/i, 'Buxus'], [/laurier/i, 'Laurus'], [/magnolia/i, 'Magnolia'], [/aulne/i, 'Alnus'], [/bouleau/i, 'Betula'], [/peuplier/i, 'Populus'], [/lilas des indes|lagerstr/i, 'Lagerstroemia'], [/cyprès/i, 'Cupressus'], [/saule/i, 'Salix'], [/(^|\s)pin(\s|$)/i, 'Pinus'], [/sapin/i, 'Abies'], [/épicéa/i, 'Picea'], [/cèdre/i, 'Cedrus'], [/mélèze/i, 'Larix'], [/douglas/i, 'Pseudotsuga'], [/séquoia/i, 'Sequoiadendron'], [/thuya/i, 'Thuja'], [/if\b/i, 'Taxus'], [/genévrier/i, 'Juniperus'], [/ginkgo/i, 'Ginkgo'], [/tulipier/i, 'Liriodendron']];
   // Port détaillé, type de feuille et d'écorce par genre (rendu 3D détaillé)
   const DETAIL = {
     Quercus: ['broad', 'lobed', 'furrowed'], Fagus: ['broad', 'ovate', 'smooth'], Carpinus: ['broad', 'ovate', 'smooth'], Castanea: ['broad', 'lanceolate', 'furrowed'],
     Acer: ['broad', 'palmate', 'plates'], Tilia: ['ovoid', 'cordate', 'ridged'], Fraxinus: ['broad', 'lanceolate', 'ridged'], Ulmus: ['broad', 'ovate', 'furrowed'],
-    Platanus: ['broad', 'palmate', 'plates'], Juglans: ['broad', 'lanceolate', 'furrowed'], Aesculus: ['ovoid', 'palmate', 'plates'], Robinia: ['broad', 'round', 'furrowed'],
+    Platanus: ['broad', 'palmate', 'mottled'], Juglans: ['broad', 'lanceolate', 'furrowed'], Aesculus: ['ovoid', 'palmate', 'plates'], Robinia: ['broad', 'round', 'furrowed'],
     Prunus: ['broad', 'ovate', 'smooth'], Malus: ['broad', 'ovate', 'plates'], Pyrus: ['ovoid', 'ovate', 'plates'], Sorbus: ['ovoid', 'lanceolate', 'smooth'],
     Corylus: ['multistem', 'round', 'smooth'], Sambucus: ['multistem', 'lanceolate', 'furrowed'], Ilex: ['dense', 'ovate', 'smooth'], Buxus: ['dense', 'round', 'smooth'], Laurus: ['dense', 'lanceolate', 'smooth'],
     Magnolia: ['ovoid', 'ovate', 'smooth'], Alnus: ['ovoid', 'round', 'furrowed'], Catalpa: ['broad', 'cordate', 'plates'], Morus: ['broad', 'cordate', 'furrowed'], Ficus: ['multistem', 'palmate', 'smooth'],
-    Betula: ['birch', 'round', 'birch'], Populus: ['ovoid', 'cordate', 'furrowed'], Cupressus: ['columnar', 'scale', 'fibrous'], Salix: ['weeping', 'lanceolate', 'furrowed'],
+    Betula: ['birch', 'round', 'birch'], Populus: ['ovoid', 'cordate', 'furrowed'], Lagerstroemia: ['multistem', 'crepe', 'mottled'], Cupressus: ['columnar', 'scale', 'fibrous'], Salix: ['weeping', 'lanceolate', 'furrowed'],
     Pinus: ['pine', 'needle', 'plates'], Abies: ['fir', 'needle', 'smooth'], Picea: ['spruce', 'needle', 'plates'], Cedrus: ['cedar', 'scale', 'furrowed'], Larix: ['fir', 'needle', 'furrowed'],
     Pseudotsuga: ['fir', 'needle', 'furrowed'], Sequoiadendron: ['fir', 'scale', 'fibrous'], Sequoia: ['fir', 'scale', 'fibrous'], Thuja: ['columnar', 'scale', 'fibrous'], Chamaecyparis: ['fir', 'scale', 'fibrous'],
     Taxus: ['dense', 'needle', 'fibrous'], Juniperus: ['columnar', 'scale', 'fibrous'], Ginkgo: ['ginkgo', 'fan', 'furrowed'], Liriodendron: ['ovoid', 'palmate', 'ridged'],

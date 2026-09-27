@@ -19,7 +19,7 @@ function tex(file, srgb = true, renderer) {
 // Rameau photographié par type de feuille, et sa couleur moyenne (pour recaler la teinte)
 const LEAF = {
   lobed: ['leaf_oak.png', '#5f7d35'], lanceolate: ['leaf_ash.png', '#557931'], ovate: ['leaf_round.png', '#709b3d'], palmate: ['leaf_oak.png', '#5f7d35'],
-  cordate: ['leaf_round.png', '#709b3d'], round: ['leaf_round.png', '#709b3d'], fan: ['leaf_round.png', '#709b3d'], needle: ['leaf_pine.png', '#596f29'], scale: ['leaf_pine.png', '#596f29'],
+  crepe: ['leaf_crepe.png', '#948454'], cordate: ['leaf_round.png', '#709b3d'], round: ['leaf_round.png', '#709b3d'], fan: ['leaf_round.png', '#709b3d'], needle: ['leaf_pine.png', '#596f29'], scale: ['leaf_pine.png', '#596f29'],
 };
 const BARK = { furrowed: 'oak', ridged: 'willow', fibrous: 'willow', plates: 'pine', birch: 'birch' }; // 'smooth' : texture dessinée
 
@@ -28,7 +28,7 @@ const barkCache = {};
 export function barkTexture(kind, renderer) {
   if (barkCache[kind]) return barkCache[kind];
   const W = 256, H = 512, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d'), r = rng('bark' + kind);
-  const base = { smooth: '#8e8a82', furrowed: '#5d5046', plates: '#7a624d', birch: '#e8e4da', fibrous: '#7c5236', ridged: '#6e665a' }[kind] || '#6a5a4a';
+  const base = { mottled: '#b7a48e', smooth: '#8e8a82', furrowed: '#5d5046', plates: '#7a624d', birch: '#e8e4da', fibrous: '#7c5236', ridged: '#6e665a' }[kind] || '#6a5a4a';
   g.fillStyle = base; g.fillRect(0, 0, W, H);
   for (let i = 0; i < 500; i++) { g.fillStyle = r() < .5 ? `rgba(255,255,255,${r() * .06})` : `rgba(0,0,0,${r() * .08})`; g.fillRect(r() * W, r() * H, 2 + r() * 10, 2 + r() * 14); }
   if (kind === 'furrowed' || kind === 'fibrous' || kind === 'ridged') {
@@ -42,6 +42,14 @@ export function barkTexture(kind, renderer) {
   } else if (kind === 'birch') {
     for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(30,25,20,${.5 + r() * .4})`; g.fillRect(r() * W, r() * H, 10 + r() * 40, 2 + r() * 3); }
     for (let i = 0; i < 12; i++) { g.fillStyle = 'rgba(40,35,30,.55)'; g.beginPath(); g.ellipse(r() * W, r() * H, 6 + r() * 18, 4 + r() * 10, 0, 0, Math.PI * 2); g.fill(); }
+  } else if (kind === 'mottled') { // écorce qui s'exfolie en plaques (lilas des Indes, platane) : gris, crème, cannelle
+    const cols = ['216,203,184', '155,138,120', '196,154,134', '230,220,203', '125,112,100', '205,176,150'];
+    for (let i = 0; i < 110; i++) {
+      const x = r() * W, y = r() * H, rx = 10 + r() * 34, ry = 14 + r() * 50, c = cols[Math.floor(r() * cols.length)];
+      g.fillStyle = `rgba(${c},${.55 + r() * .4})`; g.beginPath();
+      for (let k = 0; k <= 10; k++) { const a = k / 10 * Math.PI * 2, q = .75 + r() * .35; const px = x + Math.cos(a) * rx * q, py = y + Math.sin(a) * ry * q; k ? g.lineTo(px, py) : g.moveTo(px, py); }
+      g.fill(); g.strokeStyle = 'rgba(90,75,60,.25)'; g.lineWidth = 1; g.stroke();
+    }
   } else { // lisse : lenticelles horizontales
     for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(60,55,50,${.2 + r() * .25})`; g.fillRect(r() * W, r() * H, 4 + r() * 10, 1.5); }
   }
@@ -232,7 +240,7 @@ function makeTree({ tr, h, rad, seed, U, renderer, lite = false, density = 1, br
   barkMat.map.repeat.set(rep, rep);
 
   const [file, avg] = LEAF[leafKind], leafMap = tex(file, true, renderer), texAvg = new THREE.Color(avg);
-  const tintFor = (c, k) => { const t = new THREE.Color(1, 1, 1); if (!c) return t; const r = ['r', 'g', 'b'].map(ch => clamp(c[ch] / Math.max(texAvg[ch], .01), .45, 1.9)); return t.setRGB(...r.map(x => 1 + (x - 1) * k)); };
+  const tintFor = (c, k) => { const t = new THREE.Color(1, 1, 1); if (!c || leafKind === 'crepe') return t; /* rameau fleuri : couleurs d'origine */ const r = ['r', 'g', 'b'].map(ch => clamp(c[ch] / Math.max(texAvg[ch], .01), .45, 1.9)); return t.setRGB(...r.map(x => 1 + (x - 1) * k)); };
   const leafMat = windify(new THREE.MeshStandardMaterial({ map: leafMap, color: tintFor(new THREE.Color(tr.color), .45), vertexColors: true, alphaTest: .5, side: THREE.DoubleSide, roughness: .85 }), U, .006);
   const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafMap, alphaTest: .5 });
   return { bg, lg, barkMat, leafMat, depthMat, tintFor };

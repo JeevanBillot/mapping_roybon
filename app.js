@@ -288,7 +288,7 @@ $$('.photo-slot').forEach(slot => {
 });
 async function api(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {}, settings.appToken ? { 'X-App-Token': settings.appToken } : {});
-  return fetch(settings.proxyUrl + path, Object.assign({}, opts, { headers }));
+  return fetch(settings.proxyUrl + path, Object.assign({ cache: 'no-store' }, opts, { headers }));
 }
 let identifying = false, identifyAgain = false;
 async function identify() {
@@ -367,7 +367,7 @@ async function sync(full = false) {
       const { trees } = await r.json(); const byId = Object.fromEntries((await getAll('trees')).map(t => [t.id, t]));
       const deleted = new Set(settings.pendingDeletes);
       for (const rt of trees) { if (rt.kind === 'feature' || !rt.species) continue; if (deleted.has(rt.id)) continue; const lt = byId[rt.id]; if (!lt || (rt.updated || 0) > (lt.updated || 0)) await put('trees', Object.assign({}, rt, { synced: true })); }
-      if (full) { const remote = new Set(trees.filter(t => t.kind !== 'feature').map(t => t.id)); for (const lt of Object.values(byId)) if (lt.synced && !remote.has(lt.id)) { await del('trees', lt.id); } }
+      if (full) { const remote = new Set(trees.filter(t => t.kind !== 'feature').map(t => t.id)); for (const lt of Object.values(byId)) if (lt.synced && !remote.has(lt.id) && Date.now() - (lt.updated || 0) > 10 * 60 * 1000) { await del('trees', lt.id); } }
     } else if (r.status === 500) toast('Cloud : binding KV manquant sur le Worker', 4000);
     else if (r.status === 401) toast('Cloud : mot de passe du relais incorrect', 4000);
     if (full) toast('Synchronisation terminée');

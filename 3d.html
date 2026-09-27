@@ -76,6 +76,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
 .reidbox .idres small { font-weight:700; color:var(--accent); }
 #card-del { display:none; } .card.other-mode #card-del { display:flex; margin-top:12px; background:#b3261e; color:#fff; } .card.other-mode #card-del.undo { background:var(--accent-soft); color:var(--accent); }
 .card.other-mode .edit, .card.other-mode .reidbox, .card.other-mode .acts { display:none !important; }
+.card .edst { font-size:.78rem; color:var(--accent); min-height:1em; margin-top:4px; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
@@ -133,7 +134,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
       <label>Feuillage <b id="ed-dv"></b></label><input id="ed-d" type="range" min="0.3" max="2" step="0.1">
       <label>Branches <b id="ed-bv"></b></label><input id="ed-b" type="range" min="0.4" max="2.5" step="0.1">
       <label>Largeur <b id="ed-wv"></b><button id="ed-wauto" class="mini hidden">Auto</button></label><input id="ed-w" type="range" min="1" max="30" step="0.5">
-      <button id="ed-save" class="dup save" disabled>Enregistrer</button>
+      <div id="ed-status" class="edst"></div>
     </div>
     <div class="acts"><button id="card-move" class="dup">Déplacer</button><button id="card-dup" class="dup">Dupliquer</button></div></div>
 </div>
@@ -1069,22 +1070,21 @@ function showCard(s) {
     $('#ed-hv').textContent = fmt(manualH ?? auto()) + (manualH ? '' : ' (auto)'); $('#ed-wv').textContent = fmt(manualW ?? autoW()) + (manualW ? '' : ' (auto)');
     $('#ed-dv').textContent = DENS(dens); $('#ed-bv').textContent = BRAN(br);
     $('#ed-auto').classList.toggle('hidden', !manualH); $('#ed-wauto').classList.toggle('hidden', !manualW);
-    const o = saved(); $('#ed-save').disabled = manualH === o.h && dens === o.d && br === o.b && manualW === o.w;
   };
-  const apply = () => { s.rad = manualW ? manualW / 2 : s.autoRad; rebuildTree(s, manualH ?? auto(), dens, br, !!manualW); };
+  // Enregistrement automatique à chaque réglage (téléphone + cloud)
+  const st = $('#ed-status'); st.textContent = ''; clearTimeout(window.__edSave);
+  const persist = () => { clearTimeout(window.__edSave); st.textContent = 'Enregistrement…'; window.__edSave = setTimeout(async () => {
+    const patch = { height: manualH || null, density: dens === 1 ? null : dens, branches: br === 1 ? null : br, crownW: manualW || null };
+    try { const r = await D.saveTree({ id: t.id, ...patch }, t); Object.assign(t, patch, { updated: Date.now() }); st.textContent = r.cloud ? '✓ Enregistré' : (D.cfg.proxyUrl ? '✓ Enregistré sur cet appareil (cloud à la prochaine synchro)' : '✓ Enregistré sur cet appareil'); }
+    catch (e) { st.textContent = 'Échec de l\'enregistrement : ' + e.message; }
+  }, 500); };
+  const apply = () => { s.rad = manualW ? manualW / 2 : s.autoRad; rebuildTree(s, manualH ?? auto(), dens, br, !!manualW); persist(); };
   hIn.value = manualH ?? auto(); dIn.value = dens; bIn.value = br; wIn.value = manualW ?? autoW(); show();
   hIn.oninput = () => { manualH = +hIn.value; show(); }; dIn.oninput = () => { dens = +dIn.value; show(); };
   bIn.oninput = () => { br = +bIn.value; show(); }; wIn.oninput = () => { manualW = +wIn.value; show(); };
   hIn.onchange = dIn.onchange = bIn.onchange = wIn.onchange = apply;
   $('#ed-auto').onclick = () => { manualH = null; hIn.value = auto(); show(); apply(); };
   $('#ed-wauto').onclick = () => { manualW = null; wIn.value = autoW(); show(); apply(); };
-  $('#ed-save').onclick = async () => {
-    $('#ed-save').disabled = true; $('#ed-save').textContent = 'Enregistrement…';
-    const patch = { height: manualH || null, density: dens === 1 ? null : dens, branches: br === 1 ? null : br, crownW: manualW || null };
-    const r = await D.saveTree({ id: t.id, ...patch }, t);
-    Object.assign(t, patch, { updated: Date.now() });
-    $('#ed-save').textContent = r.cloud ? 'Enregistré' : 'Enregistré sur ce téléphone'; setTimeout(() => { $('#ed-save').textContent = 'Enregistrer'; show(); }, 1500);
-  };
   $('#card').classList.remove('hidden');
 }
 const BRAN = b => b <= .6 ? 'beaucoup moins' : b <= .85 ? 'moins' : b < 1.15 ? 'normal' : b < 1.7 ? 'plus' : 'beaucoup plus';
