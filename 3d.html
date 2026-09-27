@@ -125,7 +125,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadLidar, fetchBuildings, fetchWater, fetchSports, inBuildings, inPolygon, merc } from './lidar.js';
+import { loadLidar, fetchBuildings, fetchWater, fetchSports, fetchWalls, inBuildings, inPolygon, merc } from './lidar.js';
+import { buildWalls } from './walls.js';
 import { facadeTexture, buildTerrace, buildEave, BAY, FACADE_H } from './house.js';
 import { buildDetailedTree, treePrototype, photoFoliageColor, photoBarkTexture } from './trees3d.js';
 
@@ -154,11 +155,12 @@ const latMin = lat0 - S / mLat, latMax = lat0 + S / mLat, lonMin = lon0 - S / mL
 
 // ---------- 2. Relief et végétation (LiDAR HD), bâtiments ----------
 const size = clamp(Math.round(2 * S / .6), 384, 768);
-const [lidar, buildings, water, sports] = await Promise.all([
+const [lidar, buildings, water, sports, igWalls] = await Promise.all([
   loadLidar(latMin, lonMin, latMax, lonMax, size, t => progress(t, .15)),
   fetchBuildings(latMin, lonMin, latMax, lonMax).catch(e => { warn('Bâtiments IGN indisponibles.'); return []; }),
   fetchWater(latMin, lonMin, latMax, lonMax).catch(e => { warn('Cours d\'eau IGN indisponibles.'); return { areas: [], streams: [] }; }),
   fetchSports(latMin, lonMin, latMax, lonMax).catch(() => []),
+  fetchWalls(latMin, lonMin, latMax, lonMax).catch(() => []),
 ]);
 progress('Analyse du relief…', .45);
 let groundLL;
@@ -532,6 +534,16 @@ if (courts.length) {
       for (let i = 0; i < n; i++) { const t = i / n, post = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, FH, 8).translate(0, FH / 2, 0), postMat); post.position.set(u0 + (u1 - u0) * t, 0, v0 + (v1 - v0) * t); post.castShadow = true; g.add(post); }
     }
   }
+}
+
+// ---------- Murs et murets : tracés sur le plan 2D, sinon BD TOPO (un mur IGN doublé par un tracé manuel est ignoré) ----------
+{
+  const manual = features.filter(f => f.type === 'wall' && f.coords && f.coords.length >= 2);
+  const segs = manual.flatMap(f => f.coords.slice(1).map((c, i) => [toLocal(...f.coords[i]), toLocal(...c)]));
+  const distSeg = (p, [a, b]) => { const dx = b.x - a.x, dz = b.z - a.z, L = dx * dx + dz * dz || 1, t = clamp(((p.x - a.x) * dx + (p.z - a.z) * dz) / L, 0, 1); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
+  const dup = w => { const ps = w.coords.map(c => toLocal(...c)); return segs.length && ps.filter(p => segs.some(sg => distSeg(p, sg) < 2.5)).length >= ps.length * .6; };
+  const list = [...manual, ...igWalls.filter(w => !dup(w))];
+  if (list.length) scene.add(buildWalls(list, { toLocal, groundAt }));
 }
 
 // ---------- 4. Bâtiments : toits reconstruits (LiDAR, sinon altitudes de toit BD TOPO), murs jusqu'au toit ----------

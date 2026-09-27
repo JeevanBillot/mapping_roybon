@@ -100,6 +100,10 @@ body:not(.ui-hidden) #show-ui { display:none; }
 .embedded .tools a { display:none; }
 #card-dup { display:none; } .embedded #card-dup { display:flex; }
 .card .dup { align-items:center; justify-content:center; width:100%; margin-top:12px; padding:10px; border:0; border-radius:10px; background:var(--accent-soft); color:var(--accent); font:600 .85rem system-ui; font-family:inherit; cursor:pointer; }
+.pb-wall { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; align-items:center; }
+.pb-wall select, .pb-wall input { font:600 .82rem system-ui; font-family:inherit; padding:6px 8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+.pb-wall input { width:64px; }
+.pb-wall label { display:flex; align-items:center; gap:4px; font-size:.82rem; }
 </style>
 </head>
 <body>
@@ -136,7 +140,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
     <button data-o="relief" disabled>Relief</button><button data-o="chm" disabled>Hauteur végétation</button><button data-o="others" disabled>Autres arbres</button><button data-o="buildings" class="on">Bâtiments</button><button data-o="cadastre">Cadastre</button><button data-o="numbers" class="on">Numéros</button>
   </div>
   <div class="section">Éléments</div>
-  <div class="chips" id="elements"><button id="pick-house">Désigner la maison</button><button id="place-tennis">Placer le court de tennis</button><button id="del-tennis" class="hidden">Supprimer le court</button></div>
+  <div class="chips" id="elements"><button id="pick-house">Désigner la maison</button><button id="place-tennis">Placer le court de tennis</button><button id="del-tennis" class="hidden">Supprimer le court</button><button id="place-wall">Tracer un mur</button></div>
   <div class="section">Espèces</div>
   <input class="search" id="search" type="search" placeholder="Rechercher une espèce…">
   <div class="species" id="species"></div>
@@ -148,7 +152,12 @@ body:not(.ui-hidden) #show-ui { display:none; }
   <div class="body"><h2><span class="num" id="card-num"></span><span id="card-name"></span></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl><button id="card-dup" class="dup">Dupliquer cet arbre</button></div>
 </div>
 <div id="viewer" class="hidden"><img alt=""></div>
-<div id="placebar" class="placebar hidden"><span id="place-text"></span><div class="pb-actions"><button id="pb-save" class="hidden">Enregistrer</button><button id="pb-redo" class="hidden">Recommencer</button><button id="pb-cancel">Annuler</button></div></div>
+<div id="placebar" class="placebar hidden"><span id="place-text"></span>
+  <div id="pb-wall" class="pb-wall hidden">
+    <select id="pb-kind"><option value="enceinte">Mur d'enceinte</option><option value="muret">Muret</option><option value="soutenement">Mur de soutènement</option></select>
+    <select id="pb-mat"><option value="pierre">Pierre</option><option value="galets">Galets</option><option value="pise">Pisé enduit</option><option value="beton">Béton</option></select>
+    <label>Hauteur <input id="pb-h" type="number" step="0.1" min="0.3" max="6" value="2.2"> m</label>
+  </div><div class="pb-actions"><button id="pb-save" class="hidden">Enregistrer</button><button id="pb-redo" class="hidden">Recommencer</button><button id="pb-cancel">Annuler</button></div></div>
 <div id="print-sheet"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -231,13 +240,22 @@ $('#card-close').onclick = () => $('#card').classList.add('hidden');
 // ---------- Éléments placés à la main : court de tennis ----------
 map.createPane('feat').style.zIndex = 400;
 const featLayer = L.layerGroup().addTo(map), placeLayer = L.layerGroup().addTo(map);
-let features = [], placing = false, corners = [], hadHidden = false;
+let features = [], placing = false, placeMode = 'tennis', corners = [], hadHidden = false;
+const WALL_COL = { pierre: '#a08c70', galets: '#b4a891', pise: '#d0b286', beton: '#9a9892' }, WALL_LBL = { enceinte: 'Mur d\'enceinte', muret: 'Muret', soutenement: 'Mur de soutènement' }, MAT_LBL = { pierre: 'pierre', galets: 'galets', pise: 'pisé enduit', beton: 'béton' };
+const WALL_H = { enceinte: 2.2, muret: .8, soutenement: 1.2 };
+$('#pb-kind').onchange = () => { $('#pb-h').value = WALL_H[$('#pb-kind').value]; };
 function drawFeatures() {
   featLayer.clearLayers();
   const t = features.find(f => f.type === 'tennis');
   $('#place-tennis').textContent = t ? 'Replacer le court de tennis' : 'Placer le court de tennis';
   $('#del-tennis').classList.toggle('hidden', !t);
   if (t) L.polygon(t.ring, { pane: 'feat', color: '#fff', weight: 2, dashArray: '6 4', fill: false }).bindTooltip('Court de tennis', { permanent: true, direction: 'center', className: 'feat-lbl' }).addTo(featLayer);
+  for (const w of features.filter(f => f.type === 'wall' && f.coords)) {
+    L.polyline(w.coords, { pane: 'feat', color: WALL_COL[w.material] || '#8a7a66', weight: 5, opacity: .95, lineCap: 'butt' })
+      .bindTooltip(`${WALL_LBL[w.kind] || 'Mur'} · ${String(w.height).replace('.', ',')} m · ${MAT_LBL[w.material] || ''}`, { sticky: true })
+      .on('click', async e => { if (placing || pickingHouse) return; L.DomEvent.stopPropagation(e); if (!confirm('Supprimer ce mur ?')) return; await D.deleteFeature(w.id); features = features.filter(x => x.id !== w.id); drawFeatures(); })
+      .addTo(featLayer);
+  }
   const h = features.find(f => f.type === 'house');
   if (h) L.marker([h.lat, h.lon], { pane: 'feat', interactive: false, icon: L.divIcon({ className: '', html: '', iconSize: [0, 0] }) }).bindTooltip('Maison', { permanent: true, direction: 'center', className: 'feat-lbl' }).addTo(featLayer);
 }
@@ -255,29 +273,46 @@ async function pickHouse(latlng) {
 }
 function placeText() {
   const n = corners.length;
+  if (placeMode === 'wall') {
+    $('#place-text').textContent = n < 2 ? `Touche le départ du mur, puis chaque angle (${n} point${n > 1 ? 's' : ''})` : `${n} points · continue le tracé ou enregistre`;
+    $('#pb-save').classList.toggle('hidden', n < 2); $('#pb-redo').classList.toggle('hidden', !n); $('#pb-redo').textContent = 'Effacer le dernier point';
+    return;
+  }
+  $('#pb-redo').textContent = 'Recommencer';
   $('#place-text').textContent = n < 4 ? `Touche les 4 coins du grillage du court sur la photo (${n}/4)` : 'Vérifie le contour, puis enregistre';
   $('#pb-save').classList.toggle('hidden', n < 4); $('#pb-redo').classList.toggle('hidden', !n);
 }
 function drawPlacing() {
   placeLayer.clearLayers();
   for (const c of corners) L.marker(c, { interactive: false, icon: L.divIcon({ className: '', html: '<div class="corner"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }) }).addTo(placeLayer);
-  if (corners.length >= 2) (corners.length === 4 ? L.polygon(corners, { color: '#e8412c', weight: 2, fillOpacity: .12 }) : L.polyline(corners, { color: '#e8412c', weight: 2 })).addTo(placeLayer);
+  if (placeMode === 'wall') { if (corners.length >= 2) L.polyline(corners, { color: '#e8412c', weight: 4 }).addTo(placeLayer); }
+  else if (corners.length >= 2) (corners.length === 4 ? L.polygon(corners, { color: '#e8412c', weight: 2, fillOpacity: .12 }) : L.polyline(corners, { color: '#e8412c', weight: 2 })).addTo(placeLayer);
   placeText();
 }
-function startPlacing() {
+function startPlacing(mode = 'tennis') {
+  placeMode = mode; $('#pb-wall').classList.toggle('hidden', mode !== 'wall');
   placing = true; corners = []; hadHidden = document.body.classList.contains('ui-hidden');
   document.body.classList.add('ui-hidden'); $('#card').classList.add('hidden'); if (base !== 'ortho') setBase('ortho');
   $('#placebar').classList.remove('hidden'); $('#map').style.cursor = 'crosshair'; drawPlacing();
 }
 function stopPlacing() {
-  placing = false; corners = []; placeLayer.clearLayers(); $('#placebar').classList.add('hidden'); $('#map').style.cursor = '';
+  placing = false; corners = []; placeLayer.clearLayers(); $('#placebar').classList.add('hidden'); $('#pb-wall').classList.add('hidden'); $('#map').style.cursor = '';
   if (!hadHidden) document.body.classList.remove('ui-hidden');
 }
-map.on('click', e => { if (!placing || corners.length >= 4) return; corners.push([e.latlng.lat, e.latlng.lng]); drawPlacing(); });
-$('#place-tennis').onclick = startPlacing;
+map.on('click', e => { if (!placing || (placeMode === 'tennis' && corners.length >= 4)) return; corners.push([e.latlng.lat, e.latlng.lng]); drawPlacing(); });
+$('#place-tennis').onclick = () => startPlacing('tennis');
+$('#place-wall').onclick = () => startPlacing('wall');
 $('#pb-cancel').onclick = () => { if (pickingHouse) { pickingHouse = false; $('#placebar').classList.add('hidden'); if (!hadHidden) document.body.classList.remove('ui-hidden'); } else stopPlacing(); };
-$('#pb-redo').onclick = () => { corners = []; drawPlacing(); };
+$('#pb-redo').onclick = () => { if (placeMode === 'wall') corners.pop(); else corners = []; drawPlacing(); };
 $('#pb-save').onclick = async () => {
+  if (placeMode === 'wall') {
+    const f = { id: 'feature-wall-' + Date.now().toString(36), type: 'wall', coords: corners.slice(), kind: $('#pb-kind').value, material: $('#pb-mat').value, height: Math.min(6, Math.max(.3, +$('#pb-h').value || WALL_H[$('#pb-kind').value])) };
+    $('#place-text').textContent = 'Enregistrement…';
+    const r = await D.saveFeature(f);
+    features = features.concat([f]); drawFeatures(); stopPlacing();
+    alert(r.cloud ? 'Mur enregistré. Il apparaîtra dans la 3D. Touche-le sur le plan pour le supprimer.' : 'Mur enregistré sur cet appareil.');
+    return;
+  }
   const f = { id: 'feature-tennis', type: 'tennis', ring: corners.slice() };
   $('#place-text').textContent = 'Enregistrement…';
   const r = await D.saveFeature(f);
@@ -347,11 +382,14 @@ function buildPrint() {
   try {
     const Lm = await import('./lidar.js');
     const side = Math.max((latMax - latMin) * mLat, (lonMax - lonMin) * mLon);
-    [lidar, buildings] = await Promise.all([
+    let igWalls;
+    [lidar, buildings, igWalls] = await Promise.all([
       Lm.loadLidar(latMin, lonMin, latMax, lonMax, Math.max(256, Math.min(900, Math.round(side / .5)))),
       Lm.fetchBuildings(latMin, lonMin, latMax, lonMax).catch(() => []),
+      Lm.fetchWalls(latMin, lonMin, latMax, lonMax).catch(() => []),
     ]);
 
+    for (const w of igWalls) L.polyline(w.coords, { pane: 'bld', color: '#7a6a58', weight: 3, dashArray: '5 4' }).bindTooltip(`${w.nature} (IGN)`).addTo(ov.buildings);
     for (const b of buildings) L.polygon(b.rings, { pane: 'bld', color: '#7a6a58', weight: 1, fillColor: '#d9cdb8', fillOpacity: .85 }).bindTooltip(`Bâtiment${b.height ? ` · ${Math.round(b.height)} m` : ''}`).on('click', e => { if (pickingHouse) { L.DomEvent.stopPropagation(e); pickHouse(e.latlng); } }).addTo(ov.buildings);
     if (lidar.ok) {
       const bounds = lidar.boundsLatLon;

@@ -205,6 +205,16 @@ export async function fetchWater(latMin, lonMin, latMax, lonMax) {
   }
   return { areas, streams };
 }
+/* Murs BD TOPO (construction linéaire de nature « Mur », « Mur de soutènement »…). */
+export async function fetchWalls(latMin, lonMin, latMax, lonMax) {
+  const out = [];
+  for (const f of await fetchWFS('BDTOPO_V3:construction_lineaire', latMin, lonMin, latMax, lonMax)) {
+    const nat = String(f.props.nature || ''); if (!/mur/i.test(nat) || /anti-bruit/i.test(nat)) continue;
+    const kind = /soutènement|soutenement/i.test(nat) ? 'soutenement' : 'enceinte', h = +f.props.hauteur;
+    for (const coords of linesOf(f)) out.push({ coords, kind, height: h > 0 ? Math.min(h, 5) : null, material: 'pierre', nature: nat });
+  }
+  return out;
+}
 /* Terrains de sport BD TOPO (dont les courts de tennis). */
 export async function fetchSports(latMin, lonMin, latMax, lonMax) {
   const out = [];
