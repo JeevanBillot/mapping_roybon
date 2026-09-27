@@ -56,8 +56,14 @@ body:not(.ui-hidden) #show-ui { display:none; }
 .hud { position:fixed; } .hud .hide-ui { background:var(--accent-soft); color:var(--accent); }
 .hud h1 { padding-right:40px; }
 .embedded .hud .row { display:none; }
-#card-dup { display:none; } .embedded #card-dup { display:flex; }
 .card .dup { align-items:center; justify-content:center; width:100%; margin-top:12px; padding:10px; border:0; border-radius:10px; background:var(--accent-soft); color:var(--accent); font:600 .85rem system-ui; font-family:inherit; cursor:pointer; }
+.card .edit { margin-top:12px; padding-top:10px; border-top:1px solid var(--line); display:grid; gap:4px; font-size:.85rem; }
+.card .edit label { display:flex; align-items:center; gap:6px; color:var(--muted); } .card .edit label b { color:var(--fg); font-weight:600; }
+.card .edit input[type=range] { width:100%; accent-color:var(--accent); }
+.card .mini { margin-left:auto; border:0; border-radius:8px; padding:3px 8px; background:var(--accent-soft); color:var(--accent); font:600 .75rem system-ui; cursor:pointer; }
+.card .save { display:flex; background:var(--accent); color:#fff; } .card .save:disabled { opacity:.45; cursor:default; }
+.card .acts { display:none; gap:6px; } .embedded .card .acts { display:flex; } .card .acts .dup { flex:1; display:flex; }
+.card { max-height:calc(100% - 24px); overflow-y:auto; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
@@ -106,7 +112,13 @@ body:not(.ui-hidden) #show-ui { display:none; }
 <div class="card hidden" id="card">
   <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
   <div class="ph" id="card-ph"></div>
-  <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl><button id="card-dup" class="dup">Dupliquer cet arbre</button></div>
+  <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl>
+    <div class="edit">
+      <label>Hauteur <b id="ed-hv"></b><button id="ed-auto" class="mini hidden">Auto</button></label><input id="ed-h" type="range" min="1" max="45" step="0.5">
+      <label>Feuillage <b id="ed-dv"></b></label><input id="ed-d" type="range" min="0.3" max="2" step="0.1">
+      <button id="ed-save" class="dup save" disabled>Enregistrer</button>
+    </div>
+    <div class="acts"><button id="card-move" class="dup">Déplacer</button><button id="card-dup" class="dup">Dupliquer</button></div></div>
 </div>
 
 <script src="data.js"></script>
@@ -834,12 +846,13 @@ function trunkGeometry(h, crownBase, rad, shape, r) {
 
 // Mesure LiDAR de chaque arbre relevé
 const lidarTops = [];
+const LITE = isTouch || trees.length > 120;
 const surveyed = trees.map(t => {
   const tr = D.traits(t), m = lidar.chm ? lidar.crownAt(t.lat, t.lon, clamp(t.corrected ? 2.5 : (t.acc || 4), 2.5, 5)) : null;
-  let h = tr.height, rad = tr.crown, measured = false;
-  if (+t.height > 0) h = +t.height;
-  else if (m && m.height > 2) { h = m.height; rad = clamp(m.radius, 1, 14); measured = true; lidarTops.push(m); }
-  return { t, tr, h, rad, measured };
+  let h = tr.height, rad = tr.crown, measured = false, lidarH = null;
+  if (m && m.height > 2) { h = lidarH = m.height; rad = clamp(m.radius, 1, 14); measured = true; lidarTops.push(m); }
+  if (+t.height > 0) { h = +t.height; if (!measured) rad = tr.crown; } // hauteur saisie à la main : prioritaire
+  return { t, tr, h, rad, measured, lidarH };
 });
 const pickables = [], labelled = [];
 const trunkBox = new THREE.Group(); scene.add(trunkBox);
@@ -848,10 +861,18 @@ for (const s of surveyed) {
   const h = s.h, cb = h * CROWN_BASE[shape], ch = h - cb;
   const g = new THREE.Group(); g.userData.s = s;
   // Arbre détaillé : silhouette et feuillage de l'espèce ; couleur et écorce reprises des photos si disponibles
-  const det = buildDetailedTree({ tr, h, rad: s.rad, seed: t.id, U, renderer, lite: isTouch || surveyed.length > 120 });
-  g.add(det.group); s.det = det;
+  const det = buildDetailedTree({ tr, h, rad: s.rad, seed: t.id, U, renderer, lite: LITE, density: t.density });
+  g.add(det.group); s.det = det; s.g = g;
   const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); g.rotation.y = r() * 6.28;
-  scene.add(g); pickables.push(g); labelled.push({ s, pos: new THREE.Vector3(p.x, g.position.y + h + .8, p.z) });
+  const L = { s, pos: new THREE.Vector3(p.x, g.position.y + h + .8, p.z) }; s.lbl = L;
+  scene.add(g); pickables.push(g); labelled.push(L);
+}
+// Reconstruit un arbre après réglage (hauteur, densité du feuillage), photos conservées
+function rebuildTree(s, h, density) {
+  const old = s.det.group; s.g.remove(old); old.traverse(o => { if (o.isMesh) { o.geometry.dispose(); } });
+  s.h = h; s.det = buildDetailedTree({ tr: s.tr, h, rad: s.rad, seed: s.t.id, U, renderer, lite: LITE, density });
+  s.g.add(s.det.group); s.lbl.pos.y = s.g.position.y + h + .8;
+  if (s.photoColor) s.det.setFoliageColor(s.photoColor); if (s.barkTex) s.det.setBark(s.barkTex);
 }
 
 // Couleurs et écorces tirées des photos du terrain (chargées en arrière-plan)
@@ -860,8 +881,8 @@ for (const s of surveyed) {
     const own = D.photoOwner(s.t); if (!own) continue;
     const organs = own.organs, id = o => `${own.id}_${o}`;
     const colorSrc = organs.includes('leaf') ? 'leaf' : organs.includes('habit') ? 'habit' : null;
-    if (colorSrc) { const u = await D.photoURL(id(colorSrc)); if (u) { const c = await photoFoliageColor(u); if (c) s.det.setFoliageColor(c); } }
-    if (organs.includes('bark')) { const u = await D.photoURL(id('bark')); if (u) { const tx = await photoBarkTexture(u, renderer); if (tx) s.det.setBark(tx); } }
+    if (colorSrc) { const u = await D.photoURL(id(colorSrc)); if (u) { const c = await photoFoliageColor(u); if (c) { s.photoColor = c; s.det.setFoliageColor(c); } } }
+    if (organs.includes('bark')) { const u = await D.photoURL(id('bark')); if (u) { const tx = await photoBarkTexture(u, renderer); if (tx) { s.barkTex = tx; s.det.setBark(tx); } } }
   }
 })();
 
@@ -993,14 +1014,30 @@ function pick(cx, cy) {
 function showCard(s) {
   const t = s.t;
   $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
-  const rows = [['Hauteur', `${Math.round(s.h)} m<span class="badge">${s.measured ? 'mesurée LiDAR' : 'typique'}</span>`], ['Couronne', `${Math.round(s.rad * 2)} m de large`], ['Relevé', esc(new Date(t.date).toLocaleDateString('fr-FR'))]];
+  const rows = [['Hauteur', `${Math.round(s.h)} m<span class="badge">${+t.height > 0 ? 'saisie' : s.measured ? 'mesurée LiDAR' : 'typique'}</span>`], ['Couronne', `${Math.round(s.rad * 2)} m de large`], ['Relevé', esc(new Date(t.date).toLocaleDateString('fr-FR'))]];
   if (t.species.score != null) rows.push(['Confiance', `${Math.round(t.species.score * 100)} %`]); if (t.note) rows.push(['Note', esc(t.note)]);
   $('#card-dl').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
   const ph = $('#card-ph'); ph.innerHTML = '';
   for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (u) { const img = new Image(); img.src = u; ph.appendChild(img); } });
   $('#card-dup').onclick = () => D.toApp({ type: 'dup', id: t.id });
+  $('#card-move').onclick = () => D.toApp({ type: 'move', id: t.id });
+  // Réglages : hauteur (auto = LiDAR ou hauteur typique) et densité du feuillage, aperçu immédiat
+  const hIn = $('#ed-h'), dIn = $('#ed-d'), auto = () => s.lidarH || s.tr.height;
+  let manualH = +t.height > 0 ? +t.height : null, dens = +t.density || 1;
+  const show = () => { $('#ed-hv').textContent = `${(manualH ?? auto()).toFixed(1).replace('.', ',')} m${manualH ? '' : ' (auto)'}`; $('#ed-dv').textContent = DENS(dens); $('#ed-auto').classList.toggle('hidden', !manualH); $('#ed-save').disabled = manualH === (+t.height > 0 ? +t.height : null) && dens === (+t.density || 1); };
+  hIn.value = manualH ?? auto(); dIn.value = dens; show();
+  hIn.oninput = () => { manualH = +hIn.value; show(); }; dIn.oninput = () => { dens = +dIn.value; show(); };
+  hIn.onchange = dIn.onchange = () => rebuildTree(s, manualH ?? auto(), dens);
+  $('#ed-auto').onclick = () => { manualH = null; hIn.value = auto(); show(); rebuildTree(s, auto(), dens); };
+  $('#ed-save').onclick = async () => {
+    $('#ed-save').disabled = true; $('#ed-save').textContent = 'Enregistrement…';
+    const r = await D.saveTree({ id: t.id, height: manualH || null, density: dens === 1 ? null : dens });
+    Object.assign(t, { height: manualH || null, density: dens === 1 ? null : dens });
+    $('#ed-save').textContent = r.cloud ? 'Enregistré' : 'Enregistré sur ce téléphone'; setTimeout(() => { $('#ed-save').textContent = 'Enregistrer'; show(); }, 1500);
+  };
   $('#card').classList.remove('hidden');
 }
+const DENS = d => d <= .55 ? 'très clairsemé' : d <= .85 ? 'clairsemé' : d < 1.15 ? 'normal' : d < 1.5 ? 'dense' : 'très dense';
 $('#card-close').onclick = () => $('#card').classList.add('hidden');
 let down = null;
 renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });

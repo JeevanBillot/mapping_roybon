@@ -59,7 +59,7 @@ function switchView(v) {
   $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === (v === 'map' ? 'list' : v)));
   $$('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
   document.body.classList.toggle('immersive', v === '3d' || v === 'plan');
-  if (v === '3d' || v === 'plan') openFrame(v);
+  if ((v === '3d' || v === 'plan') && openFrame(v)) $('#view-' + v).dataset.loading = '1';
   if (v === 'list') renderList();
   if (v === 'map') renderMap();
   // GPS allumé seulement pour relever un arbre (économie de batterie)
@@ -68,8 +68,9 @@ function switchView(v) {
 // 3D et plan : pages intégrées, chargées à la première ouverture, rechargées si les arbres ont changé
 function openFrame(v) {
   const sec = $('#view-' + v); let f = sec.querySelector('iframe');
-  if (!f) { f = document.createElement('iframe'); f.src = sec.dataset.src; f.allow = 'fullscreen; xr-spatial-tracking'; sec.appendChild(f); framesDirty.delete(v); }
-  else if (framesDirty.has(v)) { framesDirty.delete(v); f.contentWindow.location.reload(); }
+  if (!f) { f = document.createElement('iframe'); f.src = sec.dataset.src; f.allow = 'fullscreen; xr-spatial-tracking'; sec.appendChild(f); framesDirty.delete(v); return true; }
+  if (framesDirty.has(v)) { framesDirty.delete(v); f.contentWindow.location.reload(); return true; }
+  return false;
 }
 const treesChanged = () => { framesDirty.add('3d'); framesDirty.add('plan'); };
 const setNavH = () => document.documentElement.style.setProperty('--nav-h', $('nav').offsetHeight + 'px');
@@ -77,6 +78,16 @@ addEventListener('resize', setNavH);
 // Demandes venant de la 3D ou du plan (ex. dupliquer un arbre depuis sa fiche)
 addEventListener('message', async e => {
   if (e.origin !== location.origin || !e.data) return;
+  if (e.data.type === 'changed') { // arbre modifié depuis la 3D ou le plan : l'autre vue se rechargera
+    for (const v of ['3d', 'plan']) { const f = $('#view-' + v + ' iframe'); if (!f || f.contentWindow !== e.source) framesDirty.add(v); }
+    return;
+  }
+  if (e.data.type === 'move') { // déplacer : ouvre le plan en mode déplacement
+    const sec = $('#view-plan'); delete sec.dataset.loading; switchView('plan');
+    const f = sec.querySelector('iframe'), send = () => f.contentWindow.postMessage({ type: 'move', id: e.data.id }, location.origin);
+    if (sec.dataset.loading) f.addEventListener('load', send, { once: true }); else send();
+    return;
+  }
   if (e.data.type === 'dup') { const t = await getOne('trees', e.data.id); if (t) startDuplicate(t); else toast('Arbre introuvable sur ce téléphone : synchronise d\'abord'); }
 });
 function setStep(n) { $$('.stepper li').forEach(li => { const s = +li.dataset.step; li.classList.toggle('on', s === n); li.classList.toggle('done', s < n); }); }

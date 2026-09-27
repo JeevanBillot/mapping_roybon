@@ -117,16 +117,17 @@ const FORMS = {
 };
 
 // ---------- Générateur (d'après EZ-Tree) ----------
-function generate(o, seed, lite) {
+function generate(o, seed, lite, density = 1) {
   const r = rng(seed), rand = (max = 1, min = 0) => min + r() * (max - min);
+  const rl = rng(seed + 'feuilles'), randL = (max = 1, min = 0) => min + rl() * (max - min); // tirage séparé : la densité ne change pas la ramure
   const B = { v: [], n: [], uv: [], idx: [] }, L = { v: [], uv: [], idx: [] };
   const queue = [{ origin: new THREE.Vector3(), ori: new THREE.Euler(), length: o.length[0], radius: o.radius[0], level: 0, sections: o.sections[0], segments: o.segments[0] }];
   const up = new THREE.Vector3(0, 1, 0), qForce = new THREE.Quaternion(), leafK = lite ? .6 : 1;
-  const leafCount = Math.max(3, Math.round(o.leaves.count * leafK)), leafSize = o.leaves.size * (lite ? 1.2 : 1);
+  const leafCount = Math.max(2, Math.round(o.leaves.count * leafK * density)), leafSize = o.leaves.size * (lite ? 1.2 : 1) * (.85 + .15 * Math.min(density, 1.6));
   const leaf = (origin, ori) => {
-    const s = leafSize * (1 + rand(o.leaves.var, -o.leaves.var)), W = s, H = s;
+    const s = leafSize * (1 + randL(o.leaves.var, -o.leaves.var)), W = s, H = s;
     for (const rot of [0, Math.PI / 2]) {
-      const i = L.v.length / 3, e = new THREE.Euler(0, rot + rand(.4, -.4), 0);
+      const i = L.v.length / 3, e = new THREE.Euler(0, rot + randL(.4, -.4), 0);
       for (const [x, y] of [[-W / 2, H], [-W / 2, 0], [W / 2, 0], [W / 2, H]]) { const p = new THREE.Vector3(x, y, 0).applyEuler(e).applyEuler(ori).add(origin); L.v.push(p.x, p.y, p.z); }
       L.uv.push(0, 1, 0, 0, 1, 0, 1, 1); L.idx.push(i, i + 1, i + 2, i, i + 2, i + 3);
     }
@@ -166,8 +167,8 @@ function generate(o, seed, lite) {
       else leaf(last.origin, last.ori);
     }
     if (br.level === o.levels) {
-      const ro = r();
-      for (let i = 0; i < leafCount; i++) { const at = along(secs, rand(1, o.leaves.start)); leaf(at.origin, spin(at.ori, o.leaves.angle, 2 * Math.PI * (ro + i / leafCount))); }
+      const ro = rl();
+      for (let i = 0; i < leafCount; i++) { const at = along(secs, randL(1, o.leaves.start)); leaf(at.origin, spin(at.ori, o.leaves.angle, 2 * Math.PI * (ro + i / leafCount))); }
     } else {
       const lv = br.level + 1, count = o.children[br.level], ro = r();
       for (let i = 0; i < count; i++) {
@@ -199,15 +200,16 @@ function crownNormals(lg, center, ry) {
 }
 
 // ---------- Arbre complet ----------
-function makeTree({ tr, h, rad, seed, U, renderer, lite = false }) {
+function makeTree({ tr, h, rad, seed, U, renderer, lite = false, density = 1 }) {
+  density = clamp(+density || 1, .3, 2);
   let form = tr.form || 'broad';
   if (form === 'columnar' && (tr.leaf === 'scale' || tr.leaf === 'needle')) form = 'columnarEver';
   const o = FORMS[form] || FORMS.broad, leafKind = LEAF[tr.leaf] ? tr.leaf : (o.type === 'evergreen' ? 'needle' : 'ovate');
   // 1re passe : taille brute → rayon de tronc réaliste ; 2e passe définitive
-  let { bg, lg } = generate(o, seed, lite); bg.computeBoundingBox(); lg.computeBoundingBox();
+  let { bg, lg } = generate(o, seed, lite, density); bg.computeBoundingBox(); lg.computeBoundingBox();
   const bb0 = bg.boundingBox.clone().union(lg.boundingBox), s0 = h / Math.max(bb0.max.y, .1);
   const wantR = clamp(h * o.trunkR, .05, .75), o2 = { ...o, radius: [wantR / s0, ...o.radius.slice(1)] };
-  bg.dispose(); lg.dispose(); ({ bg, lg } = generate(o2, seed, lite));
+  bg.dispose(); lg.dispose(); ({ bg, lg } = generate(o2, seed, lite, density));
   bg.computeBoundingBox(); lg.computeBoundingBox();
   const bb = bg.boundingBox.clone().union(lg.boundingBox), s = h / Math.max(bb.max.y, .1);
   const halfW = Math.max((bb.max.x - bb.min.x), (bb.max.z - bb.min.z)) / 2 * s, kx = clamp(rad / Math.max(halfW, .1), .7, 1.4);

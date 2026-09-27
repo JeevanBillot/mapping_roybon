@@ -98,12 +98,13 @@ body:not(.ui-hidden) #show-ui { display:none; }
 .feat-lbl { background:rgba(20,30,22,.8); color:#fff; border:0; box-shadow:none; font-weight:700; font-size:11px; border-radius:8px; }
 .feat-lbl::before { display:none; }
 .embedded .tools a { display:none; }
-#card-dup { display:none; } .embedded #card-dup { display:flex; }
+#card-dup { display:none; } .embedded #card-dup { display:flex; } .card .acts { display:flex; gap:6px; } .card .acts .dup { flex:1; } #card-move { display:flex; }
 .card .dup { align-items:center; justify-content:center; width:100%; margin-top:12px; padding:10px; border:0; border-radius:10px; background:var(--accent-soft); color:var(--accent); font:600 .85rem system-ui; font-family:inherit; cursor:pointer; }
 .pb-wall { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; align-items:center; }
 .pb-wall select, .pb-wall input { font:600 .82rem system-ui; font-family:inherit; padding:6px 8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
 .pb-wall input { width:64px; }
 .pb-wall label { display:flex; align-items:center; gap:4px; font-size:.82rem; }
+.corner.move { width:22px; height:22px; border-radius:50%; background:#e8412c; border:3px solid #fff; box-shadow:0 0 0 2px #e8412c; }
 </style>
 </head>
 <body>
@@ -149,7 +150,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
 <div class="card hidden" id="card">
   <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
   <div class="ph" id="card-ph"></div>
-  <div class="body"><h2><span class="num" id="card-num"></span><span id="card-name"></span></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl><button id="card-dup" class="dup">Dupliquer cet arbre</button></div>
+  <div class="body"><h2><span class="num" id="card-num"></span><span id="card-name"></span></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl><div class="acts"><button id="card-move" class="dup">Déplacer</button><button id="card-dup" class="dup">Dupliquer</button></div></div>
 </div>
 <div id="viewer" class="hidden"><img alt=""></div>
 <div id="placebar" class="placebar hidden"><span id="place-text"></span>
@@ -224,7 +225,7 @@ $$('#bases button').forEach(b => b.onclick = () => setBase(b.dataset.b));
 $$('#overlays button').forEach(b => b.onclick = () => toggleOv(b.dataset.o));
 
 function showCard(r) {
-  if (placing) return;
+  if (placing || moving) return;
   const t = r.t;
   $('#card-num').textContent = r.n; $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
   const dl = [['Hauteur', `${Math.round(r.h)} m<span class="badge">${r.measured ? 'mesurée LiDAR' : 'typique'}</span>`], ['Couronne', `${Math.round(r.rad * 2)} m de large`], ['Relevé', esc(new Date(t.date).toLocaleDateString('fr-FR'))], ['Position', t.corrected ? 'corrigée sur photo aérienne' : `GPS ± ${Math.round(t.acc || 0)} m`]];
@@ -234,6 +235,7 @@ function showCard(r) {
   const ph = $('#card-ph'); ph.innerHTML = '';
   for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (!u) return; const img = new Image(); img.src = u; img.onclick = () => { $('#viewer img').src = u; $('#viewer').classList.remove('hidden'); }; ph.appendChild(img); });
   $('#card-dup').onclick = () => D.toApp({ type: 'dup', id: t.id });
+  $('#card-move').onclick = () => startMove(t.id);
   $('#card').classList.remove('hidden');
 }
 $('#card-close').onclick = () => $('#card').classList.add('hidden');
@@ -309,6 +311,21 @@ function drawPlacing() {
   else if (corners.length >= 2) (corners.length === 4 ? L.polygon(corners, { color: '#e8412c', weight: 2, fillOpacity: .12 }) : L.polyline(corners, { color: '#e8412c', weight: 2 })).addTo(placeLayer);
   placeText();
 }
+// Déplacer un arbre : toucher le nouvel emplacement ou glisser le point, puis enregistrer
+let moving = null;
+function startMove(id) {
+  const r = rows.find(x => x.t.id === id); if (!r) return;
+  if (placing) stopPlacing();
+  hadHidden = document.body.classList.contains('ui-hidden'); document.body.classList.add('ui-hidden'); $('#card').classList.add('hidden'); if (base !== 'ortho') setBase('ortho');
+  const mk = L.marker([r.t.lat, r.t.lon], { draggable: true, zIndexOffset: 1000, icon: L.divIcon({ className: '', html: '<div class="corner move"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(placeLayer);
+  moving = { r, mk, from: [r.t.lat, r.t.lon] };
+  map.setView([r.t.lat, r.t.lon], Math.max(map.getZoom(), 20));
+  $('#place-text').textContent = `Déplacer ${D.name(r.t)} : touche son nouvel emplacement ou glisse le point`;
+  $('#pb-save').classList.remove('hidden'); $('#pb-redo').classList.add('hidden'); $('#pb-flip').classList.add('hidden'); $('#pb-wall').classList.add('hidden'); $('#pb-scan').classList.add('hidden');
+  $('#placebar').classList.remove('hidden'); $('#map').style.cursor = 'crosshair';
+}
+function stopMove() { moving = null; placeLayer.clearLayers(); $('#placebar').classList.add('hidden'); $('#map').style.cursor = ''; if (!hadHidden) document.body.classList.remove('ui-hidden'); }
+addEventListener('message', e => { if (e.origin === location.origin && e.data && e.data.type === 'move') { const go = () => rows.some(x => x.t.id === e.data.id) ? startMove(e.data.id) : setTimeout(go, 400); go(); } });
 function startPlacing(mode = 'tennis') {
   placeMode = mode; $('#pb-wall').classList.toggle('hidden', mode !== 'wall'); $('#pb-scan').classList.toggle('hidden', mode !== 'scan');
   placing = true; corners = []; hadHidden = document.body.classList.contains('ui-hidden');
@@ -319,15 +336,23 @@ function stopPlacing() {
   placing = false; corners = []; placeLayer.clearLayers(); $('#placebar').classList.add('hidden'); $('#pb-wall').classList.add('hidden'); $('#pb-scan').classList.add('hidden'); $('#map').style.cursor = '';
   if (!hadHidden) document.body.classList.remove('ui-hidden');
 }
-map.on('click', e => { if (!placing || (placeMode === 'tennis' && corners.length >= 4) || (placeMode === 'scan' && corners.length >= 2)) return; corners.push([e.latlng.lat, e.latlng.lng]); drawPlacing(); });
+map.on('click', e => { if (moving) { moving.mk.setLatLng(e.latlng); return; } if (!placing || (placeMode === 'tennis' && corners.length >= 4) || (placeMode === 'scan' && corners.length >= 2)) return; corners.push([e.latlng.lat, e.latlng.lng]); drawPlacing(); });
 $('#place-tennis').onclick = () => startPlacing('tennis');
 $('#place-wall').onclick = () => startPlacing('wall');
 $('#pb-model').innerHTML = D.MODELS.map(m => `<option value="${m.file}">${esc(m.label)}</option>`).join('');
 $('#place-scan').onclick = () => startPlacing('scan');
 $('#pb-flip').onclick = () => { corners.reverse(); drawPlacing(); };
-$('#pb-cancel').onclick = () => { if (pickingHouse) { pickingHouse = false; $('#placebar').classList.add('hidden'); if (!hadHidden) document.body.classList.remove('ui-hidden'); } else stopPlacing(); };
+$('#pb-cancel').onclick = () => { if (moving) return stopMove(); if (pickingHouse) { pickingHouse = false; $('#placebar').classList.add('hidden'); if (!hadHidden) document.body.classList.remove('ui-hidden'); } else stopPlacing(); };
 $('#pb-redo').onclick = () => { if (placeMode === 'wall') corners.pop(); else corners = []; drawPlacing(); };
 $('#pb-save').onclick = async () => {
+  if (moving) {
+    const { r, mk } = moving, ll = mk.getLatLng();
+    $('#place-text').textContent = 'Enregistrement…';
+    const res = await D.saveTree({ id: r.t.id, lat: ll.lat, lon: ll.lng, corrected: true });
+    Object.assign(r.t, { lat: ll.lat, lon: ll.lng, corrected: true }); stopMove(); measure(); draw();
+    if (!res.cloud && D.cfg.proxyUrl) alert('Déplacement enregistré sur ce téléphone ; il partira au cloud à la prochaine synchronisation.');
+    return;
+  }
   if (placeMode === 'scan') {
     const file = $('#pb-model').value, f = { id: 'feature-scan-' + file.replace(/\W+/g, '-'), type: 'scan', model: file, a: corners[0], b: corners[1] };
     $('#place-text').textContent = 'Enregistrement…';
