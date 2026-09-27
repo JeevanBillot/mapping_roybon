@@ -48,22 +48,44 @@ async function photoSrc(id) {
   if (!p) return null;
   const u = URL.createObjectURL(p.blob); photoURLs.set(id, u); return u;
 }
-const firstPhotoId = t => t.organs && t.organs.length ? `${t.id}_${t.organs.includes('leaf') ? 'leaf' : t.organs[0]}` : null;
+const photoOwner = t => t.organs && t.organs.length ? t : t.photoFrom && t.photoFrom.organs && t.photoFrom.organs.length ? t.photoFrom : null; // copie : photos de l'arbre d'origine
+const firstPhotoId = t => { const o = photoOwner(t); return o ? `${o.id}_${o.organs.includes('leaf') ? 'leaf' : o.organs[0]}` : null; };
 
 // ---------- Navigation ----------
 $$('nav button').forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)));
+$$('.list-mode button').forEach(b => b.addEventListener('click', () => switchView(b.dataset.m)));
+let framesDirty = new Set();
 function switchView(v) {
-  $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === (v === 'map' ? 'list' : v)));
   $$('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
+  document.body.classList.toggle('immersive', v === '3d' || v === 'plan');
+  if (v === '3d' || v === 'plan') openFrame(v);
   if (v === 'list') renderList();
   if (v === 'map') renderMap();
+  // GPS allumé seulement pour relever un arbre (économie de batterie)
+  if (v === 'capture') startWatch(); else if (!current) stopWatch();
 }
+// 3D et plan : pages intégrées, chargées à la première ouverture, rechargées si les arbres ont changé
+function openFrame(v) {
+  const sec = $('#view-' + v); let f = sec.querySelector('iframe');
+  if (!f) { f = document.createElement('iframe'); f.src = sec.dataset.src; f.allow = 'fullscreen; xr-spatial-tracking'; sec.appendChild(f); framesDirty.delete(v); }
+  else if (framesDirty.has(v)) { framesDirty.delete(v); f.contentWindow.location.reload(); }
+}
+const treesChanged = () => { framesDirty.add('3d'); framesDirty.add('plan'); };
+const setNavH = () => document.documentElement.style.setProperty('--nav-h', $('nav').offsetHeight + 'px');
+addEventListener('resize', setNavH);
+// Demandes venant de la 3D ou du plan (ex. dupliquer un arbre depuis sa fiche)
+addEventListener('message', async e => {
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.type === 'dup') { const t = await getOne('trees', e.data.id); if (t) startDuplicate(t); else toast('Arbre introuvable sur ce téléphone : synchronise d\'abord'); }
+});
 function setStep(n) { $$('.stepper li').forEach(li => { const s = +li.dataset.step; li.classList.toggle('on', s === n); li.classList.toggle('done', s < n); }); }
 
 // ---------- État de saisie ----------
 let current = null, miniMap = null, miniMarker = null, gpsAbort = null;
+let dupSrc = null;
 function resetCapture() {
-  current = null; setStep(1); setTimeout(reloadIfIdle, 300);
+  current = null; dupSrc = null; show($('#dup-banner'), false); setStep(1); setTimeout(reloadIfIdle, 300);
   show($('#step-gps')); show($('#gps-card')); show($('#gps-status'), false); show($('#pos-card'), false); show($('#btn-gps'));
   show($('#step-photos'), false); show($('#step-save'), false); show($('#btn-cancel'), false);
   $$('.photo-slot').forEach(s => { s.classList.remove('filled'); s.querySelector('img').src = ''; s.querySelector('input').value = ''; });
@@ -86,7 +108,7 @@ function startWatch() {
   gps.poll = setInterval(() => navigator.geolocation.getCurrentPosition(onFix, () => {}, GPS_OPTS), 2000);
 }
 function stopWatch() { if (gps.wid != null) navigator.geolocation.clearWatch(gps.wid); clearInterval(gps.poll); gps.wid = null; }
-document.addEventListener('visibilitychange', () => document.hidden ? stopWatch() : startWatch());
+document.addEventListener('visibilitychange', () => document.hidden ? stopWatch() : ($('#view-capture').classList.contains('active') || current) && startWatch());
 setInterval(renderGpsLive, 3000);
 function renderGpsLive() {
   const el = $('#gps-live'), f = gps.last, fresh = f && Date.now() - f.t < 8000;
@@ -136,7 +158,7 @@ async function startGPS() {
   for (const f of chosen) { const w = 1 / (f.acc * f.acc); W += w; lat += f.lat * w; lon += f.lon * w; if (f.alt != null) { alt += f.alt; nAlt++; } }
   lat /= W; lon /= W;
   const acc = Math.min(...chosen.map(f => f.acc));
-  current = { id: Date.now().toString(36), lat, lon, gpsLat: lat, gpsLon: lon, acc, samples: chosen.length, alt: nAlt ? alt / nAlt : null, date: new Date().toISOString(), photos: {}, corrected: false };
+  current = { id: Date.now().toString(36), lat, lon, gpsLat: lat, gpsLon: lon, acc, samples: chosen.length, alt: nAlt ? alt / nAlt : null, date: new Date().toISOString(), photos: {}, corrected: false, dupFrom: dupSrc };
   $('#pos-text').textContent = `± ${acc.toFixed(1)} m${Date.now() - t0 > 400 ? ` · ${((Date.now() - t0) / 1000).toFixed(0)} s` : ''}`;
   show($('#gps-status'), false); show($('#btn-gps'), false); show($('#gps-card'), false); show($('#btn-cancel')); show($('#pos-card')); haptic();
   showMiniMap();
@@ -212,7 +234,27 @@ async function loadMiniLidar() {
       .addTo(miniLidarLayer);
   }
 }
-$('#btn-pos-ok').addEventListener('click', () => { haptic(); show($('#step-gps'), false); show($('#step-photos')); setStep(2); });
+$('#btn-pos-ok').addEventListener('click', () => {
+  haptic(); show($('#step-gps'), false);
+  if (current.dupFrom) { const { species } = current.dupFrom; return choose({ ...species }); } // copie : même espèce, pas de photos
+  show($('#step-photos')); setStep(2);
+});
+
+// ---------- Dupliquer un arbre ----------
+function startDuplicate(t) {
+  switchView('capture'); resetCapture(); dupSrc = t;
+  $('#dup-name').textContent = speciesName(t); show($('#dup-banner')); window.scrollTo(0, 0);
+}
+// Placer la copie directement sur la carte (sans aller au pied de l'arbre) : départ à 6 m de l'original
+$('#btn-dup-map').addEventListener('click', () => {
+  if (!dupSrc) return;
+  const f = gps.last && Date.now() - gps.last.t < 10000 && gps.last.acc < 30 ? gps.last : null, mLat = 111132, mLon = 111320 * Math.cos(dupSrc.lat * Math.PI / 180);
+  const lat = f ? f.lat : dupSrc.lat + 4 / mLat, lon = f ? f.lon : dupSrc.lon + 4.5 / mLon;
+  current = { id: Date.now().toString(36), lat, lon, gpsLat: f ? f.lat : null, gpsLon: f ? f.lon : null, acc: f ? f.acc : 0, samples: f ? 1 : 0, alt: null, date: new Date().toISOString(), photos: {}, corrected: true, snapped: 'manuel', dupFrom: dupSrc };
+  $('#pos-text').textContent = f ? `± ${f.acc.toFixed(1)} m` : 'placé à côté de l\'original : déplace le point';
+  show($('#gps-status'), false); show($('#btn-gps'), false); show($('#gps-card'), false); show($('#btn-cancel')); show($('#pos-card')); haptic();
+  showMiniMap();
+});
 
 // ---------- Étape 2 : photos + identification ----------
 function downscale(file, max = 1280) {
@@ -275,19 +317,21 @@ async function choose(sp) {
   $('#chosen-score').textContent = sp.score != null ? `Pl@ntNet ${Math.round(sp.score * 100)} %` : 'Saisie manuelle';
   const th = $('#chosen-img'); const own = current.photos.leaf || current.photos.habit || Object.values(current.photos)[0];
   th.style.backgroundImage = own ? `url(${URL.createObjectURL(own)})` : sp.refImg ? `url(${sp.refImg})` : ''; th.style.backgroundSize = 'cover';
+  if (!own && current.dupFrom) { const pid = firstPhotoId(current.dupFrom); if (pid) photoSrc(pid).then(u => { if (u) th.style.backgroundImage = `url(${u})`; }); }
   show($('#step-photos'), false); show($('#step-save')); setStep(3);
 }
-$('#btn-back').addEventListener('click', () => { show($('#step-save'), false); show($('#step-photos')); setStep(2); });
+$('#btn-back').addEventListener('click', () => { show($('#step-save'), false); show($('#step-photos')); setStep(2); if (current) current.dupFrom = null; });
 
 // ---------- Étape 3 : enregistrement ----------
 $('#btn-save').addEventListener('click', async () => {
   current.note = $('#note').value.trim();
-  const { photos, ...tree } = current;
+  const { photos, dupFrom, ...tree } = current;
   tree.organs = Object.keys(photos); tree.updated = Date.now(); tree.synced = false;
+  if (dupFrom) { tree.dupOf = dupFrom.id; if (!tree.organs.length) { const o = photoOwner(dupFrom); if (o) tree.photoFrom = { id: o.id, organs: o.organs }; } }
   await put('trees', tree);
   for (const o of tree.organs) await put('photos', { id: `${tree.id}_${o}`, treeId: tree.id, organ: o, blob: photos[o], synced: false });
   haptic(); toast(`${speciesName(tree)} enregistré`);
-  resetCapture(); updateCount(); sync();
+  resetCapture(); updateCount(); treesChanged(); sync();
 });
 async function updateCount() {
   const trees = await getAll('trees'); $('#count').textContent = trees.length; const n = trees.filter(t => !t.synced).length;
@@ -337,14 +381,15 @@ async function renderList() {
   const ul = $('#tree-list'); ul.innerHTML = '';
   for (const t of trees) {
     const li = document.createElement('li'); const pid = firstPhotoId(t);
-    li.innerHTML = `<img class="thumb" src="icon.svg" alt=""><div class="info"><b><span class="dot" style="background:${colorFor(t.species.sci || speciesName(t))};display:inline-block;margin-right:6px"></span>${esc(speciesName(t))}</b><small>${esc(t.species.sci || '')}${t.species.score != null ? ' · ' + Math.round(t.species.score * 100) + ' %' : ''}</small><small>${new Date(t.date).toLocaleDateString('fr-FR')} · ±${(t.acc || 0).toFixed(0)} m${t.corrected ? ' · corrigé' : ''}${t.note ? ' · ' + esc(t.note) : ''}</small>${t.synced ? '' : `<small class="unsynced">${ico('clock')}non synchronisé</small>`}</div><button class="del" aria-label="Supprimer">${ico('trash')}</button>`;
+    li.innerHTML = `<img class="thumb" src="icon.svg" alt=""><div class="info"><b><span class="dot" style="background:${colorFor(t.species.sci || speciesName(t))};display:inline-block;margin-right:6px"></span>${esc(speciesName(t))}</b><small>${esc(t.species.sci || '')}${t.species.score != null ? ' · ' + Math.round(t.species.score * 100) + ' %' : ''}</small><small>${new Date(t.date).toLocaleDateString('fr-FR')} · ±${(t.acc || 0).toFixed(0)} m${t.corrected ? ' · corrigé' : ''}${t.note ? ' · ' + esc(t.note) : ''}</small>${t.synced ? '' : `<small class="unsynced">${ico('clock')}non synchronisé</small>`}</div><button class="dupb" aria-label="Dupliquer" title="Dupliquer">${ico('copy')}</button><button class="del" aria-label="Supprimer">${ico('trash')}</button>`;
     if (pid) photoSrc(pid).then(u => { if (u) li.querySelector('img').src = u; });
     li.querySelector('img').addEventListener('click', async () => { if (pid) { const u = await photoSrc(pid); if (u) { $('#viewer img').src = u; show($('#viewer')); } } });
+    li.querySelector('.dupb').addEventListener('click', () => startDuplicate(t));
     li.querySelector('.del').addEventListener('click', async () => {
       if (!confirm(`Supprimer ${speciesName(t)} ?`)) return;
       await del('trees', t.id); for (const o of t.organs || []) await del('photos', `${t.id}_${o}`);
       settings.pendingDeletes = [...settings.pendingDeletes, t.id];
-      renderList(); updateCount(); sync();
+      renderList(); updateCount(); treesChanged(); sync();
     });
     ul.appendChild(li);
   }
@@ -375,7 +420,7 @@ async function renderMap() {
     const m = L.marker([t.lat, t.lon], { draggable: true, icon: L.divIcon({ className: '', html: `<div class="tree-marker" style="background:${col}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(layer);
     m.bindPopup(`<b>${esc(speciesName(t))}</b><br><i>${esc(t.species.sci || '')}</i><br>±${(t.acc || 0).toFixed(0)} m${t.note ? '<br>' + esc(t.note) : ''}<div class="pp" data-id="${t.id}"></div>`);
     m.on('popupopen', async e => { const pid = firstPhotoId(t); if (!pid) return; const u = await photoSrc(pid); const box = e.popup.getElement().querySelector('.pp'); if (u && box) { box.innerHTML = `<img src="${u}">`; e.popup.update(); } });
-    m.on('dragend', async () => { const ll = m.getLatLng(); t.lat = ll.lat; t.lon = ll.lng; t.corrected = true; t.updated = Date.now(); t.synced = false; await put('trees', t); haptic(); toast('Position corrigée'); sync(); });
+    m.on('dragend', async () => { const ll = m.getLatLng(); t.lat = ll.lat; t.lon = ll.lng; t.corrected = true; t.updated = Date.now(); t.synced = false; await put('trees', t); haptic(); toast('Position corrigée'); treesChanged(); sync(); });
     pts.push([t.lat, t.lon]);
   }
   $('#legend').innerHTML = Object.entries(species).sort().map(([n, c]) => `<span><i style="background:${c}"></i>${esc(n)}</span>`).join('');
@@ -398,7 +443,7 @@ $('#btn-export').addEventListener('click', async () => {
 });
 
 // ---------- Réglages ----------
-$('#btn-save-settings').addEventListener('click', () => { settings.proxyUrl = $('#proxy-url').value.trim(); settings.appToken = $('#app-token').value.trim(); settings.gpsTarget = +$('#gps-target').value || 5; settings.gpsMaxWait = +$('#gps-maxwait').value || 10; renderGpsLive(); toast('Réglages enregistrés'); switchView('capture'); sync(true); });
+$('#btn-save-settings').addEventListener('click', () => { settings.proxyUrl = $('#proxy-url').value.trim(); settings.appToken = $('#app-token').value.trim(); settings.gpsTarget = +$('#gps-target').value || 5; settings.gpsMaxWait = +$('#gps-maxwait').value || 10; renderGpsLive(); toast('Réglages enregistrés'); treesChanged(); switchView('3d'); sync(true); });
 $('#btn-wipe').addEventListener('click', async () => { if (!confirm('Effacer les données de ce téléphone ? Le cloud n\'est pas touché.')) return; await tx('trees', 'readwrite', s => s.clear()); await tx('photos', 'readwrite', s => s.clear()); updateCount(); toast('Données locales effacées'); });
 
 // ---------- Mises à jour automatiques ----------
@@ -420,7 +465,7 @@ function setupUpdates() {
 (async () => {
   await openDB();
   $('#proxy-url').value = settings.proxyUrl; $('#app-token').value = settings.appToken; $('#gps-target').value = settings.gpsTarget; $('#gps-maxwait').value = settings.gpsMaxWait;
-  updateCount(); resetCapture(); startWatch(); renderGpsLive();
+  updateCount(); resetCapture(); setNavH(); switchView('3d'); renderGpsLive();
   setupUpdates();
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if (!settings.proxyUrl) { toast('Commence par les Réglages : URL du relais et mot de passe', 4000); } else sync();

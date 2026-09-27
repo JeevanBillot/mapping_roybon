@@ -19,13 +19,17 @@ PWA à installer sur le téléphone. GPS moyenné + photos + identification Pl@n
 
 **Sur le téléphone** : ouvrir l'URL Pages → « Ajouter à l'écran d'accueil » → ⚙ → coller l'URL du Worker et le mot de passe.
 
-**Par arbre** : le GPS est allumé dès l'ouverture de l'app et sa précision s'affiche en direct. « Je suis à l'arbre » prend la position immédiatement si elle atteint la précision visée (5 m par défaut), sinon attend au plus 10 s (réglables). Puis repositionnement sur une mini-carte au choix : photo aérienne, plan IGN, ou arbres LiDAR (sommets de couronnes mesurés par l'IGN, à toucher pour y placer le point). Les arbres déjà relevés y sont affichés. Ensuite photos feuille / écorce / silhouette (identification automatique), choix, enregistrement.
+**Navigation** : l'app s'ouvre sur la balade 3D. Menu du bas : 3D, Plan (2D), Arbres (liste ou carte), Relever, Réglages. La 3D et le plan sont intégrés en plein écran et se rechargent quand un arbre est ajouté, déplacé ou supprimé.
+
+**Dupliquer** : bouton copie dans la liste, ou « Dupliquer cet arbre » dans la fiche d'un arbre en 3D ou sur le plan. La copie reprend l'espèce (et les photos de l'original pour le rendu 3D) ; il ne reste qu'à la placer, au GPS ou directement sur la carte.
+
+**Par arbre** : le GPS s'allume à l'ouverture de l'onglet Relever et sa précision s'affiche en direct. « Je suis à l'arbre » prend la position immédiatement si elle atteint la précision visée (5 m par défaut), sinon attend au plus 10 s (réglables). Puis repositionnement sur une mini-carte au choix : photo aérienne, plan IGN, ou arbres LiDAR (sommets de couronnes mesurés par l'IGN, à toucher pour y placer le point). Les arbres déjà relevés y sont affichés. Ensuite photos feuille / écorce / silhouette (identification automatique), choix, enregistrement.
 
 **Export** : onglet Liste → Exporter. Envoyer le ZIP pour l'étape 2.
 
 ## 2. Plan 2D et balade 3D
 
-Deux pages qui lisent les arbres depuis le cloud (même relais que l'app) ou, à défaut, depuis le téléphone. Accès depuis l'onglet Carte de l'app.
+Deux pages qui lisent les arbres depuis le cloud (même relais que l'app) ou, à défaut, depuis le téléphone. Onglets 3D et Plan de l'app (ou pages seules `3d.html` et `plan.html`).
 
 **Données LiDAR HD (IGN)** : `lidar.js` télécharge le modèle de terrain (MNT) et le modèle de surface (MNS) au demi-mètre. Leur différence donne la hauteur de la végétation, d'où :
 - la hauteur mesurée et le contour réel de la couronne de chaque arbre relevé ;

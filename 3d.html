@@ -55,6 +55,9 @@ body.ui-hidden .ui-panel { display:none !important; }
 body:not(.ui-hidden) #show-ui { display:none; }
 .hud { position:fixed; } .hud .hide-ui { background:var(--accent-soft); color:var(--accent); }
 .hud h1 { padding-right:40px; }
+.embedded .hud .row { display:none; }
+#card-dup { display:none; } .embedded #card-dup { display:flex; }
+.card .dup { align-items:center; justify-content:center; width:100%; margin-top:12px; padding:10px; border:0; border-radius:10px; background:var(--accent-soft); color:var(--accent); font:600 .85rem system-ui; font-family:inherit; cursor:pointer; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
@@ -103,7 +106,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
 <div class="card hidden" id="card">
   <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
   <div class="ph" id="card-ph"></div>
-  <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl></div>
+  <div class="body"><h2 id="card-name"></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl><button id="card-dup" class="dup">Dupliquer cet arbre</button></div>
 </div>
 
 <script src="data.js"></script>
@@ -810,7 +813,8 @@ for (const s of surveyed) {
 // Couleurs et écorces tirées des photos du terrain (chargées en arrière-plan)
 (async () => {
   for (const s of surveyed) {
-    const organs = s.t.organs || [], id = o => `${s.t.id}_${o}`;
+    const own = D.photoOwner(s.t); if (!own) continue;
+    const organs = own.organs, id = o => `${own.id}_${o}`;
     const colorSrc = organs.includes('leaf') ? 'leaf' : organs.includes('habit') ? 'habit' : null;
     if (colorSrc) { const u = await D.photoURL(id(colorSrc)); if (u) { const c = await photoFoliageColor(u); if (c) s.det.setFoliageColor(c); } }
     if (organs.includes('bark')) { const u = await D.photoURL(id('bark')); if (u) { const tx = await photoBarkTexture(u, renderer); if (tx) s.det.setBark(tx); } }
@@ -950,6 +954,7 @@ function showCard(s) {
   $('#card-dl').innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
   const ph = $('#card-ph'); ph.innerHTML = '';
   for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (u) { const img = new Image(); img.src = u; ph.appendChild(img); } });
+  $('#card-dup').onclick = () => D.toApp({ type: 'dup', id: t.id });
   $('#card').classList.remove('hidden');
 }
 $('#card-close').onclick = () => $('#card').classList.add('hidden');

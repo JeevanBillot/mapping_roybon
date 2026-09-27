@@ -61,7 +61,13 @@ window.RoybonData = (() => {
     else if (cfg.proxyUrl) { try { const r = await api(`/sync/photo/${id}`); if (r.ok) u = URL.createObjectURL(await r.blob()); } catch (e) {} }
     urls.set(id, u); return u;
   }
-  const photoIds = t => (t.organs || []).map(o => `${t.id}_${o}`);
+  // Photos de l'arbre, ou de l'arbre d'origine pour une copie
+  const photoOwner = t => t.organs && t.organs.length ? t : t.photoFrom && (t.photoFrom.organs || []).length ? t.photoFrom : null;
+  const photoIds = t => { const o = photoOwner(t); return o ? o.organs.map(x => `${o.id}_${x}`) : []; };
+  // Intégré dans l'app (onglets 3D / Plan) : liens de navigation masqués, actions renvoyées à l'app
+  const embedded = window.parent !== window;
+  if (embedded) document.documentElement.classList.add('embedded');
+  const toApp = msg => { try { window.parent.postMessage(msg, location.origin); } catch (e) {} };
   const name = t => (t.species && (t.species.common || t.species.sci)) || 'Inconnu';
   function colorFor(n) { let h = 0; for (const c of (n || '?')) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 60% 42%)`; }
 
@@ -106,5 +112,5 @@ window.RoybonData = (() => {
     const h = +(t.height || 0) || height; // hauteur mesurée si disponible
     return { genus: g || null, shape, height: h, crown: crown * (h / height), color, form, leaf, bark };
   }
-  return { cfg, DEFAULT_CENTER, loadTrees, saveFeature, deleteFeature, photoURL, photoIds, name, colorFor, traits };
+  return { cfg, DEFAULT_CENTER, loadTrees, saveFeature, deleteFeature, photoURL, photoIds, photoOwner, embedded, toApp, name, colorFor, traits };
 })();

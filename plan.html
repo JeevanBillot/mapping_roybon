@@ -97,6 +97,9 @@ body:not(.ui-hidden) #show-ui { display:none; }
 .corner { width:14px; height:14px; border-radius:50%; background:#fff; border:3px solid #e8412c; box-shadow:0 1px 4px rgba(0,0,0,.5); }
 .feat-lbl { background:rgba(20,30,22,.8); color:#fff; border:0; box-shadow:none; font-weight:700; font-size:11px; border-radius:8px; }
 .feat-lbl::before { display:none; }
+.embedded .tools a { display:none; }
+#card-dup { display:none; } .embedded #card-dup { display:flex; }
+.card .dup { align-items:center; justify-content:center; width:100%; margin-top:12px; padding:10px; border:0; border-radius:10px; background:var(--accent-soft); color:var(--accent); font:600 .85rem system-ui; font-family:inherit; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -142,7 +145,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
 <div class="card hidden" id="card">
   <button class="close" id="card-close" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
   <div class="ph" id="card-ph"></div>
-  <div class="body"><h2><span class="num" id="card-num"></span><span id="card-name"></span></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl></div>
+  <div class="body"><h2><span class="num" id="card-num"></span><span id="card-name"></span></h2><div class="sci" id="card-sci"></div><dl id="card-dl"></dl><button id="card-dup" class="dup">Dupliquer cet arbre</button></div>
 </div>
 <div id="viewer" class="hidden"><img alt=""></div>
 <div id="placebar" class="placebar hidden"><span id="place-text"></span><div class="pb-actions"><button id="pb-save" class="hidden">Enregistrer</button><button id="pb-redo" class="hidden">Recommencer</button><button id="pb-cancel">Annuler</button></div></div>
@@ -220,6 +223,7 @@ function showCard(r) {
   $('#card-dl').innerHTML = dl.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
   const ph = $('#card-ph'); ph.innerHTML = '';
   for (const id of D.photoIds(t)) D.photoURL(id).then(u => { if (!u) return; const img = new Image(); img.src = u; img.onclick = () => { $('#viewer img').src = u; $('#viewer').classList.remove('hidden'); }; ph.appendChild(img); });
+  $('#card-dup').onclick = () => D.toApp({ type: 'dup', id: t.id });
   $('#card').classList.remove('hidden');
 }
 $('#card-close').onclick = () => $('#card').classList.add('hidden');
