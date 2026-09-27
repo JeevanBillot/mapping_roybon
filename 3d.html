@@ -870,25 +870,34 @@ const surveyed = trees.map(t => {
   if (m && m.height > 2) { h = lidarH = m.height; rad = clamp(m.radius, 1, 14); measured = true; lidarTops.push(m); }
   if (+t.height > 0) { h = +t.height; if (!measured) rad = tr.crown; } // hauteur saisie à la main : prioritaire
   if (+t.crownW > 0) rad = +t.crownW / 2;                                // largeur saisie à la main
-  return { t, tr, h, rad, measured, lidarH, autoRad: m && m.height > 2 ? clamp(m.radius, 1, 14) : tr.crown };
+  // Couronne ajustée sur le plan : largeur équivalente et décalage du houppier par rapport au tronc
+  let lean = null, outlineRad = null;
+  if (Array.isArray(t.crownOutline) && t.crownOutline.length >= 3) {
+    const q = t.crownOutline.map(([a, b]) => toLocal(a, b)); let A = 0, cx = 0, cz = 0;
+    for (let i = 0; i < q.length; i++) { const p1 = q[i], p2 = q[(i + 1) % q.length], k = p1.x * p2.z - p2.x * p1.z; A += k; cx += (p1.x + p2.x) * k; cz += (p1.z + p2.z) * k; }
+    A /= 2; if (Math.abs(A) > .5) { cx /= 6 * A; cz /= 6 * A; const o = toLocal(t.lat, t.lon); outlineRad = Math.sqrt(Math.abs(A) / Math.PI); if (!(+t.crownW > 0)) rad = outlineRad; lean = { x: cx - o.x, z: cz - o.z }; }
+  }
+  return { t, tr, h, rad, measured, lidarH, lean, autoRad: outlineRad || (m && m.height > 2 ? clamp(m.radius, 1, 14) : tr.crown) };
 });
 const pickables = [], labelled = [];
 const trunkBox = new THREE.Group(); scene.add(trunkBox);
 for (const s of surveyed) {
   const { t, tr } = s, r = rndOf(t.id), shape = tr.shape;
   const h = s.h, cb = h * CROWN_BASE[shape], ch = h - cb;
-  const g = new THREE.Group(); g.userData.s = s;
+  const g = new THREE.Group(); g.userData.s = s; const rotY = r() * 6.28;
   // Arbre détaillé : silhouette et feuillage de l'espèce ; couleur et écorce reprises des photos si disponibles
-  const det = buildDetailedTree({ tr, h, rad: s.rad, seed: t.id, U, renderer, lite: LITE, density: t.density, branches: t.branches, fitWidth: +t.crownW > 0 });
+  const det = buildDetailedTree({ tr, h, rad: s.rad, seed: t.id, U, renderer, lite: LITE, density: t.density, branches: t.branches, fitWidth: +t.crownW > 0 || !!s.lean, lean: localLean(s, rotY) });
   g.add(det.group); s.det = det; s.g = g;
-  const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); g.rotation.y = r() * 6.28;
+  const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); g.rotation.y = rotY;
   const L = { s, pos: new THREE.Vector3(p.x, g.position.y + h + .8, p.z) }; s.lbl = L;
   scene.add(g); pickables.push(g); labelled.push(L);
 }
 // Reconstruit un arbre après réglage (hauteur, densité du feuillage), photos conservées
-function rebuildTree(s, h, density, branches = +s.t.branches || 1, fitWidth = +s.t.crownW > 0) {
+// Décalage du houppier exprimé dans le repère tourné de l'arbre
+function localLean(s, th) { if (!s.lean) return null; const c = Math.cos(th), sn = Math.sin(th); return { x: s.lean.x * c - s.lean.z * sn, z: s.lean.x * sn + s.lean.z * c }; }
+function rebuildTree(s, h, density, branches = +s.t.branches || 1, fitWidth = +s.t.crownW > 0 || !!s.lean) {
   const old = s.det.group; s.g.remove(old); old.traverse(o => { if (o.isMesh) { o.geometry.dispose(); } });
-  s.h = h; s.det = buildDetailedTree({ tr: s.tr, h, rad: s.rad, seed: s.t.id, U, renderer, lite: LITE, density, branches, fitWidth });
+  s.h = h; s.det = buildDetailedTree({ tr: s.tr, h, rad: s.rad, seed: s.t.id, U, renderer, lite: LITE, density, branches, fitWidth, lean: localLean(s, s.g.rotation.y) });
   s.g.add(s.det.group); s.lbl.pos.y = s.g.position.y + h + .8;
   if (s.photoColor) s.det.setFoliageColor(s.photoColor); if (s.barkTex) s.det.setBark(s.barkTex);
 }
@@ -917,6 +926,7 @@ if (lidar.chm) {
     exclude: (la, lo) => { if (Math.abs(la - lat0) * mLat > S || Math.abs(lo - lon0) * mLon > S) return true; if (inBuildings(la, lo, buildings, dLat)) return true;
       { const q = toLocal(la, lo); if (courts.some(C => { const [u, v] = C.toCourt(q.x, q.z); return Math.abs(u) < C.L / 2 + .5 && Math.abs(v) < C.W / 2 + .5; })) return true; if (lakeDepthAt(q.x, q.z) > 1.2) return true; const ns = nearestStream(q.x, q.z); if (ns && ns.d < ns.w * .4) return true; }
       if (removedPts.some(([a, b]) => Math.hypot((a - la) * mLat, (b - lo) * mLon) < 2)) return true;
+      if (surveyed.some(s => Array.isArray(s.t.crownOutline) && s.t.crownOutline.length >= 3 && inPolygon(la, lo, s.t.crownOutline))) return true;
       return surveyed.some(s => Math.hypot((s.t.lat - la) * mLat, (s.t.lon - lo) * mLon) < Math.max(3.5, s.rad * .9)) || lidarTops.some(m => Math.hypot((m.lat - la) * mLat, (m.lon - lo) * mLon) < Math.max(3.5, m.radius * .9)); },
     max: isTouch ? 1200 : 2500,
   });
@@ -1046,7 +1056,7 @@ function showCard(s) {
   $('#card-move').onclick = () => D.toApp({ type: 'move', id: t.id });
   D.identifyUI($('#card-reid'), t, () => { // nouvelle espèce : port, feuillage, écorce et nom mis à jour
     s.tr = D.traits(t); $('#card-name').textContent = D.name(t); $('#card-sci').textContent = t.species.sci || '';
-    const h2 = +t.height > 0 ? +t.height : s.lidarH || s.tr.height; if (!s.measured) s.autoRad = s.tr.crown; if (!(+t.crownW > 0)) s.rad = s.autoRad;
+    const h2 = +t.height > 0 ? +t.height : s.lidarH || s.tr.height; if (!s.measured && !s.lean) s.autoRad = s.tr.crown; if (!(+t.crownW > 0)) s.rad = s.autoRad;
     s.photoColor = s.photoColor || null; rebuildTree(s, h2, +t.density || 1);
     if (s.lbl.el) s.lbl.el.innerHTML = `<i style="background:${D.colorFor(t.species.sci || D.name(t))}"></i>${esc(D.name(t))}`;
   });

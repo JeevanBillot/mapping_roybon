@@ -200,7 +200,7 @@ function crownNormals(lg, center, ry) {
 }
 
 // ---------- Arbre complet ----------
-function makeTree({ tr, h, rad, seed, U, renderer, lite = false, density = 1, branches = 1, fitWidth = false }) {
+function makeTree({ tr, h, rad, seed, U, renderer, lite = false, density = 1, branches = 1, fitWidth = false, lean = null }) {
   density = clamp(+density || 1, .3, 2); branches = clamp(+branches || 1, .4, 2.5);
   let form = tr.form || 'broad';
   if (form === 'columnar' && (tr.leaf === 'scale' || tr.leaf === 'needle')) form = 'columnarEver';
@@ -210,17 +210,20 @@ function makeTree({ tr, h, rad, seed, U, renderer, lite = false, density = 1, br
   // 1re passe : taille brute → rayon de tronc réaliste (et, si une largeur est imposée, branches allongées) ; 2e passe définitive
   let { bg, lg } = generate(o, seed, lite, density); bg.computeBoundingBox(); lg.computeBoundingBox();
   const bb0 = bg.boundingBox.clone().union(lg.boundingBox), s0 = h / Math.max(bb0.max.y, .1);
-  if (fitWidth) { const hw0 = Math.max(bb0.max.x - bb0.min.x, bb0.max.z - bb0.min.z) / 2 * s0, lk = clamp(Math.sqrt(clamp(rad / Math.max(hw0, .1), .4, 3)), .6, 1.7); o = { ...o, length: o.length.map((L, i) => i ? L * lk : L) }; }
+  if (fitWidth) { const hw0 = Math.max(bb0.max.x - bb0.min.x, bb0.max.z - bb0.min.z) / 2 * s0, lk = clamp(Math.sqrt(clamp(rad / Math.max(hw0, .1), .3, 5)), .55, 2.2); o = { ...o, length: o.length.map((L, i) => i ? L * lk : L) }; }
   const wantR = clamp(h * o.trunkR, .05, .75), o2 = { ...o, radius: [wantR / s0, ...o.radius.slice(1)] };
   bg.dispose(); lg.dispose(); ({ bg, lg } = generate(o2, seed, lite, density));
   bg.computeBoundingBox(); lg.computeBoundingBox();
   const bb = bg.boundingBox.clone().union(lg.boundingBox), s = h / Math.max(bb.max.y, .1);
-  const halfW = Math.max((bb.max.x - bb.min.x), (bb.max.z - bb.min.z)) / 2 * s, kx = clamp(rad / Math.max(halfW, .1), fitWidth ? .55 : .7, fitWidth ? 1.8 : 1.4);
+  const halfW = Math.max((bb.max.x - bb.min.x), (bb.max.z - bb.min.z)) / 2 * s, kx = clamp(rad / Math.max(halfW, .1), fitWidth ? .4 : .7, fitWidth ? 3 : 1.4);
   const cx = (bb.max.x + bb.min.x) / 2, cz = (bb.max.z + bb.min.z) / 2;
   const M = new THREE.Matrix4().makeScale(s * kx, s, s * kx).multiply(new THREE.Matrix4().makeTranslation(-cx * .6, 0, -cz * .6));
-  bg.applyMatrix4(M); lg.applyMatrix4(M); lg.computeBoundingBox(); bg.computeBoundingSphere(); lg.computeBoundingSphere();
+  bg.applyMatrix4(M); lg.applyMatrix4(M);
+  // Houppier décentré (couronne ajustée sur le plan) : le tronc s'incline progressivement vers son centre
+  if (lean && Math.hypot(lean.x, lean.z) > .3) for (const g of [bg, lg]) { const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const f = Math.pow(clamp(p.getY(i) / h, 0, 1), 1.6); p.setX(i, p.getX(i) + lean.x * f); p.setZ(i, p.getZ(i) + lean.z * f); } p.needsUpdate = true; }
+  lg.computeBoundingBox(); 
   const lb = lg.boundingBox, center = new THREE.Vector3((lb.min.x + lb.max.x) / 2, (lb.min.y + lb.max.y) / 2, (lb.min.z + lb.max.z) / 2);
-  crownNormals(lg, center, (lb.max.y - lb.min.y) / 2);
+  crownNormals(lg, center, (lb.max.y - lb.min.y) / 2); bg.computeBoundingSphere(); lg.computeBoundingSphere();
 
   const bk = BARK[tr.bark], rep = tr.bark === 'birch' ? 1 : 2;
   const barkMat = new THREE.MeshStandardMaterial({ roughness: .95, color: 0xffffff }); // tronc et branches fixes

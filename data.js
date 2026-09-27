@@ -127,7 +127,7 @@ window.RoybonData = (() => {
     Prunus: ['round', 8, 4, '#6f9a45'], Malus: ['round', 7, 4, '#6d9744'], Pyrus: ['round', 10, 3.5, '#6a9442'], Sorbus: ['round', 10, 3.5, '#739e48'],
     Corylus: ['shrub', 5, 3, '#6e9a44'], Sambucus: ['shrub', 5, 3, '#6b9440'], Ilex: ['shrub', 8, 3, '#2f5a2a'], Buxus: ['shrub', 3, 1.5, '#2e5527'], Laurus: ['shrub', 7, 3, '#3b6530'],
     Magnolia: ['round', 10, 5, '#3f6d33'], Alnus: ['round', 18, 4.5, '#557f3a'], Catalpa: ['round', 12, 6, '#7aa84e'], Morus: ['round', 10, 5, '#6c9a42'], Ficus: ['round', 5, 3, '#5f8a3d'],
-    Betula: ['slender', 18, 3.5, '#8cb85a'], Populus: ['columnar', 28, 3, '#7ea94f'], Cupressus: ['columnar', 18, 2, '#2f4f2a'], Carpinus_fastigiata: ['columnar', 15, 3, '#6a9440'],
+    Betula: ['slender', 18, 3.5, '#8cb85a'], Populus: ['round', 28, 8, '#7ea94f'], Cupressus: ['columnar', 18, 2, '#2f4f2a'], Carpinus_fastigiata: ['columnar', 15, 3, '#6a9440'],
     Salix: ['weeping', 14, 6, '#9cc26a'],
     Pinus: ['pine', 22, 5, '#355a2e'], Abies: ['conifer', 30, 4, '#274a28'], Picea: ['conifer', 30, 3.5, '#2a4d2a'], Cedrus: ['conifer', 25, 7, '#3c5f3f'],
     Larix: ['conifer', 25, 4, '#6f9a4f'], Pseudotsuga: ['conifer', 35, 4.5, '#2d502b'], Sequoiadendron: ['conifer', 40, 5, '#3a5a30'], Sequoia: ['conifer', 35, 4, '#3a5a30'],
@@ -143,19 +143,19 @@ window.RoybonData = (() => {
     Prunus: ['broad', 'ovate', 'smooth'], Malus: ['broad', 'ovate', 'plates'], Pyrus: ['ovoid', 'ovate', 'plates'], Sorbus: ['ovoid', 'lanceolate', 'smooth'],
     Corylus: ['multistem', 'round', 'smooth'], Sambucus: ['multistem', 'lanceolate', 'furrowed'], Ilex: ['dense', 'ovate', 'smooth'], Buxus: ['dense', 'round', 'smooth'], Laurus: ['dense', 'lanceolate', 'smooth'],
     Magnolia: ['ovoid', 'ovate', 'smooth'], Alnus: ['ovoid', 'round', 'furrowed'], Catalpa: ['broad', 'cordate', 'plates'], Morus: ['broad', 'cordate', 'furrowed'], Ficus: ['multistem', 'palmate', 'smooth'],
-    Betula: ['birch', 'round', 'birch'], Populus: ['columnar', 'cordate', 'furrowed'], Cupressus: ['columnar', 'scale', 'fibrous'], Salix: ['weeping', 'lanceolate', 'furrowed'],
+    Betula: ['birch', 'round', 'birch'], Populus: ['ovoid', 'cordate', 'furrowed'], Cupressus: ['columnar', 'scale', 'fibrous'], Salix: ['weeping', 'lanceolate', 'furrowed'],
     Pinus: ['pine', 'needle', 'plates'], Abies: ['fir', 'needle', 'smooth'], Picea: ['spruce', 'needle', 'plates'], Cedrus: ['cedar', 'scale', 'furrowed'], Larix: ['fir', 'needle', 'furrowed'],
     Pseudotsuga: ['fir', 'needle', 'furrowed'], Sequoiadendron: ['fir', 'scale', 'fibrous'], Sequoia: ['fir', 'scale', 'fibrous'], Thuja: ['columnar', 'scale', 'fibrous'], Chamaecyparis: ['fir', 'scale', 'fibrous'],
     Taxus: ['dense', 'needle', 'fibrous'], Juniperus: ['columnar', 'scale', 'fibrous'], Ginkgo: ['ginkgo', 'fan', 'furrowed'], Liriodendron: ['ovoid', 'palmate', 'ridged'],
   };
-  const SPECIES_DETAIL = { 'Prunus lusitanica': ['dense', 'lanceolate', 'smooth', 8, 3.5, '#2f5a2c'], 'Prunus laurocerasus': ['dense', 'lanceolate', 'smooth', 6, 3.5, '#2e5a2a'], 'Cedrus libani': ['cedar', 'scale', 'furrowed', 25, 8, '#40604a'], 'Picea orientalis': ['spruce', 'needle', 'plates', 30, 3.5, '#223f26'] };
+  const SPECIES_DETAIL = { 'Populus italica': ['columnar', 'cordate', 'furrowed', 30, 2.5, '#7ea94f'], 'Populus canadensis': ['broad', 'cordate', 'furrowed', 30, 9, '#7ea94f'],  'Prunus lusitanica': ['dense', 'lanceolate', 'smooth', 8, 3.5, '#2f5a2c'], 'Prunus laurocerasus': ['dense', 'lanceolate', 'smooth', 6, 3.5, '#2e5a2a'], 'Cedrus libani': ['cedar', 'scale', 'furrowed', 25, 8, '#40604a'], 'Picea orientalis': ['spruce', 'needle', 'plates', 30, 3.5, '#223f26'] };
   function traits(t) {
     const sci = ((t.species && t.species.sci) || '').trim();
     let g = sci.split(/\s+/)[0];
     if (!GENUS[g]) { const c = name(t); const m = COMMON.find(([re]) => re.test(c)); g = m ? m[1] : ''; }
     let [shape, height, crown, color] = GENUS[g] || ['round', 12, 4, '#5f8a3d'];
     let [form, leaf, bark] = DETAIL[g] || ['broad', 'ovate', 'furrowed'];
-    const sp = SPECIES_DETAIL[sci.split(/\s+/).slice(0, 2).join(' ')];
+    const sp = SPECIES_DETAIL[sci.replace(/\s[×x]\s/, ' ').replace(/'.*'|\bvar\..*$/, '').split(/\s+/).slice(0, 2).join(' ')] || (/italica/i.test(sci) && SPECIES_DETAIL['Populus italica']);
     if (sp) { [form, leaf, bark] = sp; [height, crown, color] = sp.slice(3); if (form === 'dense') shape = 'shrub'; }
     const h = +(t.height || 0) || height; // hauteur mesurée si disponible
     return { genus: g || null, shape, height: h, crown: crown * (h / height), color, form, leaf, bark };
