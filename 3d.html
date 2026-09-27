@@ -127,6 +127,8 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadLidar, fetchBuildings, fetchWater, fetchSports, fetchWalls, inBuildings, inPolygon, merc } from './lidar.js';
 import { buildWalls } from './walls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { facadeTexture, buildTerrace, buildEave, BAY, FACADE_H } from './house.js';
 import { buildDetailedTree, treePrototype, photoFoliageColor, photoBarkTexture } from './trees3d.js';
 
@@ -549,6 +551,7 @@ if (courts.length) {
 // ---------- 4. Bâtiments : toits reconstruits (LiDAR, sinon altitudes de toit BD TOPO), murs jusqu'au toit ----------
 progress('Reconstruction des toits…', .66);
 let nRoofLidar = 0;
+const scans = [];
 {
   const wallMat = new THREE.MeshStandardMaterial({ color: '#e8dfcf', roughness: .95, side: THREE.DoubleSide });
   const roofMat = ortho ? new THREE.MeshStandardMaterial({ map: ortho, roughness: .8, side: THREE.DoubleSide }) : new THREE.MeshStandardMaterial({ color: '#9c5a44', roughness: .8, side: THREE.DoubleSide });
@@ -648,6 +651,14 @@ let nRoofLidar = 0;
     });
   }
   const houseMat = new THREE.MeshStandardMaterial({ map: facadeTexture(renderer), roughness: .92, side: THREE.DoubleSide });
+  // Façades scannées : placées sur le plan 2D (deux extrémités), sinon façade de la maison opposée au jardin
+  const scanOf = (m, A, B, auto) => { const len = Math.hypot(B.x - A.x, B.z - A.z), X = { x: (B.x - A.x) / len, z: (B.z - A.z) / len }; return { file: m.file, A, B, len, X, n: { x: -X.z, z: X.x }, auto }; };
+  for (const f of features.filter(f => f.type === 'scan' && f.a && f.b && f.model)) { const A = toLocal(...f.a), B = toLocal(...f.b); if (Math.hypot(B.x - A.x, B.z - A.z) > 2) scans.push(scanOf({ file: f.model }, A, B, false)); }
+  const nearScan = (p, q) => scans.find(sc => { // bande de mur couverte par un scan (parallèle, à moins de 1,5 m)
+    const mx = (p.x + q.x) / 2 - sc.A.x, mz = (p.z + q.z) / 2 - sc.A.z, t = (mx * sc.X.x + mz * sc.X.z) / sc.len, d = Math.abs(mx * sc.n.x + mz * sc.n.z);
+    const L = Math.hypot(q.x - p.x, q.z - p.z) || 1, par = Math.abs(((q.x - p.x) * sc.X.x + (q.z - p.z) * sc.X.z) / L);
+    return t > -.02 && t < 1.02 && d < 1.5 && par > .85;
+  });
   for (const [bi, b] of buildings.entries()) {
     const isHouse = bi === houseIdx;
     let ring = b.rings[0].map(([la, lo]) => toLocal(la, lo));
@@ -656,6 +667,11 @@ let nRoofLidar = 0;
     const holes = b.rings.slice(1).map(h => h.map(([la, lo]) => toLocal(la, lo)));
     const g0 = Math.min(...ring.map(p => groundAt(p.x, p.z)));
     const hgt = clamp(b.height || 6, 2.5, 30);
+    if (isHouse && !scans.length) { // scan non placé : façade longue opposée à la façade jardin (sud)
+      const edges = ring.map((a, e) => { const c = ring[(e + 1) % ring.length], len = Math.hypot(c.x - a.x, c.z - a.z), mx = (a.x + c.x) / 2, mz = (a.z + c.z) / 2; let nx = -(c.z - a.z) / len, nz = (c.x - a.x) / len; if (pip(mx + nx * .6, mz + nz * .6, ring)) { nx = -nx; nz = -nz; } return { a, c, len, nx, nz }; }).filter(e => e.len >= 8);
+      const e = edges.sort((p, q) => (-q.nz * q.len) - (-p.nz * p.len))[0];
+      if (e && e.nz < 0) { const X = { x: e.nz, z: -e.nx }, [A, B] = (e.c.x - e.a.x) * X.x + (e.c.z - e.a.z) * X.z > 0 ? [e.a, e.c] : [e.c, e.a]; scans.push(scanOf(D.MODELS[0], A, B, true)); }
+    }
     let roofAt = lidar.mns ? lidarRoof(ring, g0, b.props || {}, b.height || 0) : null;
     if (roofAt) nRoofLidar++; else roofAt = gableRoof(ring, g0, b.props || {}, hgt);
     // Toit : emprise découpée en mailles de 1 m, chaque sommet à la hauteur du toit
@@ -681,6 +697,7 @@ let nRoofLidar = 0;
       for (let k = 0; k < n; k++) {
         const p = { x: a.x + (c.x - a.x) * k / n, z: a.z + (c.z - a.z) * k / n }, q = { x: a.x + (c.x - a.x) * (k + 1) / n, z: a.z + (c.z - a.z) * (k + 1) / n };
         const hp = roofAt(p.x, p.z), hq = roofAt(q.x, q.z);
+        if (nearScan(p, q)) continue; // remplacé par la façade scannée
         wp.push(p.x, yb, p.z, q.x, yb, q.z, q.x, hq, q.z, p.x, yb, p.z, q.x, hq, q.z, p.x, hp, p.z);
         if (isHouse) {
           const up = s2 => plain ? .05 : (s2 - off) / BAY, u0 = up(len * k / n), u1 = up(len * (k + 1) / n), v = y => clamp((y - g0) / FACADE_H, 0, .999);
@@ -696,6 +713,7 @@ let nRoofLidar = 0;
       if (f.len < 2) continue;
       const ha = roofAt(f.a.x, f.a.z), hc = roofAt(f.c.x, f.c.z), hm = roofAt((f.a.x + f.c.x) / 2, (f.a.z + f.c.z) / 2);
       if (hm - (ha + hc) / 2 > .8 || Math.abs(ha - hc) > Math.max(1.2, f.len * .1)) continue;              // pignon : pas d'avant-toit
+      if (nearScan(f.a, f.c)) continue;                                                                        // gouttière déjà dans le scan
       const dx = (f.c.x - f.a.x) / f.len, dz = (f.c.z - f.a.z) / f.len, mx = (f.a.x + f.c.x) / 2, mz = (f.a.z + f.c.z) / 2;
       let nx = -dz, nz = dx; if (pip(mx + nx * .6, mz + nz * .6, ring)) { nx = -nx; nz = -nz; }
       scene.add(buildEave(f.a, f.c, { x: nx, z: nz }, ha - .08, hc - .08));
@@ -704,7 +722,7 @@ let nRoofLidar = 0;
     if (isHouse) {
       let best = null;
       for (const f of facades) {
-        if (f.len < BAY * 5) continue;
+        if (f.len < BAY * 5 || nearScan(f.a, f.c)) continue;
         const dx = (f.c.x - f.a.x) / f.len, dz = (f.c.z - f.a.z) / f.len, mx = (f.a.x + f.c.x) / 2, mz = (f.a.z + f.c.z) / 2;
         let nx = -dz, nz = dx; if (pip(mx + nx * .6, mz + nz * .6, ring)) { nx = -nx; nz = -nz; }            // normale vers l'extérieur
         const score = nz * f.len; if (nz > .5 && (!best || score > best.score)) best = { f, nx, nz, score };
@@ -719,6 +737,20 @@ let nRoofLidar = 0;
       }
     }
   }
+}
+
+// Chargement des façades scannées (en arrière-plan)
+if (scans.length) {
+  const gl = new GLTFLoader(); gl.setMeshoptDecoder(MeshoptDecoder);
+  for (const sc of scans) gl.loadAsync(sc.file).then(g => {
+    const m = g.scene, y0 = groundAt(sc.A.x + sc.n.x * 1.2, sc.A.z + sc.n.z * 1.2);
+    m.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; const mp = o.material.map; o.material = new THREE.MeshStandardMaterial({ map: mp, roughness: 1, side: THREE.DoubleSide }); if (mp) mp.anisotropy = renderer.capabilities.getMaxAnisotropy(); } });
+    const holder = new THREE.Group(), L = sc.len;
+    holder.matrixAutoUpdate = false;
+    holder.matrix.makeBasis(new THREE.Vector3(sc.X.x * L, 0, sc.X.z * L), new THREE.Vector3(0, L, 0), new THREE.Vector3(sc.n.x * L, 0, sc.n.z * L)).setPosition(sc.A.x, y0, sc.A.z);
+    holder.add(m); scene.add(holder);
+    if (sc.auto) warn('Façade scannée placée automatiquement : ajuste-la sur le Plan 2D (Éléments › Placer un scan) si besoin.');
+  }).catch(e => warn('Scan 3D non chargé : ' + e.message));
 }
 
 // ---------- 5. Arbres ----------

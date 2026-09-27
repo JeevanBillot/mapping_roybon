@@ -140,7 +140,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
     <button data-o="relief" disabled>Relief</button><button data-o="chm" disabled>Hauteur végétation</button><button data-o="others" disabled>Autres arbres</button><button data-o="buildings" class="on">Bâtiments</button><button data-o="cadastre">Cadastre</button><button data-o="numbers" class="on">Numéros</button>
   </div>
   <div class="section">Éléments</div>
-  <div class="chips" id="elements"><button id="pick-house">Désigner la maison</button><button id="place-tennis">Placer le court de tennis</button><button id="del-tennis" class="hidden">Supprimer le court</button><button id="place-wall">Tracer un mur</button></div>
+  <div class="chips" id="elements"><button id="pick-house">Désigner la maison</button><button id="place-tennis">Placer le court de tennis</button><button id="del-tennis" class="hidden">Supprimer le court</button><button id="place-wall">Tracer un mur</button><button id="place-scan">Placer un scan 3D</button></div>
   <div class="section">Espèces</div>
   <input class="search" id="search" type="search" placeholder="Rechercher une espèce…">
   <div class="species" id="species"></div>
@@ -153,11 +153,12 @@ body:not(.ui-hidden) #show-ui { display:none; }
 </div>
 <div id="viewer" class="hidden"><img alt=""></div>
 <div id="placebar" class="placebar hidden"><span id="place-text"></span>
+  <div id="pb-scan" class="pb-wall hidden"><select id="pb-model"></select></div>
   <div id="pb-wall" class="pb-wall hidden">
     <select id="pb-kind"><option value="enceinte">Mur d'enceinte</option><option value="muret">Muret</option><option value="soutenement">Mur de soutènement</option></select>
     <select id="pb-mat"><option value="pierre">Pierre</option><option value="galets">Galets</option><option value="pise">Pisé enduit</option><option value="beton">Béton</option></select>
     <label>Hauteur <input id="pb-h" type="number" step="0.1" min="0.3" max="6" value="2.2"> m</label>
-  </div><div class="pb-actions"><button id="pb-save" class="hidden">Enregistrer</button><button id="pb-redo" class="hidden">Recommencer</button><button id="pb-cancel">Annuler</button></div></div>
+  </div><div class="pb-actions"><button id="pb-save" class="hidden">Enregistrer</button><button id="pb-flip" class="hidden">Inverser</button><button id="pb-redo" class="hidden">Recommencer</button><button id="pb-cancel">Annuler</button></div></div>
 <div id="print-sheet"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -256,6 +257,13 @@ function drawFeatures() {
       .on('click', async e => { if (placing || pickingHouse) return; L.DomEvent.stopPropagation(e); if (!confirm('Supprimer ce mur ?')) return; await D.deleteFeature(w.id); features = features.filter(x => x.id !== w.id); drawFeatures(); })
       .addTo(featLayer);
   }
+  for (const sc of features.filter(f => f.type === 'scan' && f.a && f.b)) {
+    const m = D.MODELS.find(x => x.file === sc.model);
+    L.polyline([sc.a, sc.b], { pane: 'feat', color: '#2f7de1', weight: 5 }).bindTooltip(`Scan 3D : ${m ? m.label : sc.model}`, { sticky: true })
+      .on('click', async e => { if (placing || pickingHouse) return; L.DomEvent.stopPropagation(e); if (!confirm('Retirer ce placement ? (la façade reprendra sa position automatique)')) return; await D.deleteFeature(sc.id); features = features.filter(x => x.id !== sc.id); drawFeatures(); })
+      .addTo(featLayer);
+    scanArrow(sc.a, sc.b, '#2f7de1').addTo(featLayer);
+  }
   const h = features.find(f => f.type === 'house');
   if (h) L.marker([h.lat, h.lon], { pane: 'feat', interactive: false, icon: L.divIcon({ className: '', html: '', iconSize: [0, 0] }) }).bindTooltip('Maison', { permanent: true, direction: 'center', className: 'feat-lbl' }).addTo(featLayer);
 }
@@ -271,8 +279,19 @@ async function pickHouse(latlng) {
   const r = await D.saveFeature(f); features = features.filter(x => x.id !== f.id).concat([f]); drawFeatures();
   alert(r.cloud ? 'Maison enregistrée. Sa façade et sa terrasse apparaîtront dans la 3D.' : 'Maison enregistrée sur cet appareil.');
 }
+function scanArrow(a, b, col) {
+  const mLat = 111132, mLon = 111320 * Math.cos(a[0] * Math.PI / 180), e = (b[1] - a[1]) * mLon, n = (b[0] - a[0]) * mLat, l = Math.hypot(e, n) || 1;
+  const oe = n / l, on = -e / l, m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], tip = [m[0] + on * 4 / mLat, m[1] + oe * 4 / mLon];
+  return L.polyline([m, tip], { pane: 'feat', color: col, weight: 3, dashArray: '2 4' });
+}
 function placeText() {
   const n = corners.length;
+  $('#pb-flip').classList.toggle('hidden', !(placeMode === 'scan' && n === 2));
+  if (placeMode === 'scan') {
+    $('#place-text').textContent = n < 2 ? `Face à la façade, depuis l'extérieur : touche l'angle GAUCHE puis l'angle DROIT du mur (${n}/2)` : 'La flèche doit pointer vers l\'extérieur (là où tu te tenais). Sinon, Inverser.';
+    $('#pb-save').classList.toggle('hidden', n < 2); $('#pb-redo').classList.toggle('hidden', !n); $('#pb-redo').textContent = 'Recommencer';
+    return;
+  }
   if (placeMode === 'wall') {
     $('#place-text').textContent = n < 2 ? `Touche le départ du mur, puis chaque angle (${n} point${n > 1 ? 's' : ''})` : `${n} points · continue le tracé ou enregistre`;
     $('#pb-save').classList.toggle('hidden', n < 2); $('#pb-redo').classList.toggle('hidden', !n); $('#pb-redo').textContent = 'Effacer le dernier point';
@@ -286,25 +305,37 @@ function drawPlacing() {
   placeLayer.clearLayers();
   for (const c of corners) L.marker(c, { interactive: false, icon: L.divIcon({ className: '', html: '<div class="corner"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }) }).addTo(placeLayer);
   if (placeMode === 'wall') { if (corners.length >= 2) L.polyline(corners, { color: '#e8412c', weight: 4 }).addTo(placeLayer); }
+  else if (placeMode === 'scan') { if (corners.length === 2) { L.polyline(corners, { color: '#e8412c', weight: 4 }).addTo(placeLayer); scanArrow(corners[0], corners[1], '#e8412c').addTo(placeLayer); } }
   else if (corners.length >= 2) (corners.length === 4 ? L.polygon(corners, { color: '#e8412c', weight: 2, fillOpacity: .12 }) : L.polyline(corners, { color: '#e8412c', weight: 2 })).addTo(placeLayer);
   placeText();
 }
 function startPlacing(mode = 'tennis') {
-  placeMode = mode; $('#pb-wall').classList.toggle('hidden', mode !== 'wall');
+  placeMode = mode; $('#pb-wall').classList.toggle('hidden', mode !== 'wall'); $('#pb-scan').classList.toggle('hidden', mode !== 'scan');
   placing = true; corners = []; hadHidden = document.body.classList.contains('ui-hidden');
   document.body.classList.add('ui-hidden'); $('#card').classList.add('hidden'); if (base !== 'ortho') setBase('ortho');
   $('#placebar').classList.remove('hidden'); $('#map').style.cursor = 'crosshair'; drawPlacing();
 }
 function stopPlacing() {
-  placing = false; corners = []; placeLayer.clearLayers(); $('#placebar').classList.add('hidden'); $('#pb-wall').classList.add('hidden'); $('#map').style.cursor = '';
+  placing = false; corners = []; placeLayer.clearLayers(); $('#placebar').classList.add('hidden'); $('#pb-wall').classList.add('hidden'); $('#pb-scan').classList.add('hidden'); $('#map').style.cursor = '';
   if (!hadHidden) document.body.classList.remove('ui-hidden');
 }
-map.on('click', e => { if (!placing || (placeMode === 'tennis' && corners.length >= 4)) return; corners.push([e.latlng.lat, e.latlng.lng]); drawPlacing(); });
+map.on('click', e => { if (!placing || (placeMode === 'tennis' && corners.length >= 4) || (placeMode === 'scan' && corners.length >= 2)) return; corners.push([e.latlng.lat, e.latlng.lng]); drawPlacing(); });
 $('#place-tennis').onclick = () => startPlacing('tennis');
 $('#place-wall').onclick = () => startPlacing('wall');
+$('#pb-model').innerHTML = D.MODELS.map(m => `<option value="${m.file}">${esc(m.label)}</option>`).join('');
+$('#place-scan').onclick = () => startPlacing('scan');
+$('#pb-flip').onclick = () => { corners.reverse(); drawPlacing(); };
 $('#pb-cancel').onclick = () => { if (pickingHouse) { pickingHouse = false; $('#placebar').classList.add('hidden'); if (!hadHidden) document.body.classList.remove('ui-hidden'); } else stopPlacing(); };
 $('#pb-redo').onclick = () => { if (placeMode === 'wall') corners.pop(); else corners = []; drawPlacing(); };
 $('#pb-save').onclick = async () => {
+  if (placeMode === 'scan') {
+    const file = $('#pb-model').value, f = { id: 'feature-scan-' + file.replace(/\W+/g, '-'), type: 'scan', model: file, a: corners[0], b: corners[1] };
+    $('#place-text').textContent = 'Enregistrement…';
+    const r = await D.saveFeature(f);
+    features = features.filter(x => x.id !== f.id).concat([f]); drawFeatures(); stopPlacing();
+    alert(r.cloud ? 'Scan placé. Il apparaîtra à cet endroit dans la 3D.' : 'Scan placé sur cet appareil.');
+    return;
+  }
   if (placeMode === 'wall') {
     const f = { id: 'feature-wall-' + Date.now().toString(36), type: 'wall', coords: corners.slice(), kind: $('#pb-kind').value, material: $('#pb-mat').value, height: Math.min(6, Math.max(.3, +$('#pb-h').value || WALL_H[$('#pb-kind').value])) };
     $('#place-text').textContent = 'Enregistrement…';

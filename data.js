@@ -6,6 +6,8 @@ window.RoybonData = (() => {
     get appToken() { try { return localStorage.getItem('appToken') || ''; } catch (e) { return ''; } },
   };
   const DEFAULT_CENTER = [45.2553, 5.2447]; // Roybon
+  // Scans 3D (photogrammétrie) : largeur de façade = 1, origine au pied du mur à gauche (vu de face), x à droite, y en haut, z vers l'extérieur
+  const MODELS = [{ file: 'models/facade-entree.glb', label: 'Façade d\'entrée (scan)', building: 'house' }];
 
   function openDB() {
     return new Promise(res => {
@@ -112,5 +114,5 @@ window.RoybonData = (() => {
     const h = +(t.height || 0) || height; // hauteur mesurée si disponible
     return { genus: g || null, shape, height: h, crown: crown * (h / height), color, form, leaf, bark };
   }
-  return { cfg, DEFAULT_CENTER, loadTrees, saveFeature, deleteFeature, photoURL, photoIds, photoOwner, embedded, toApp, name, colorFor, traits };
+  return { cfg, DEFAULT_CENTER, MODELS, loadTrees, saveFeature, deleteFeature, photoURL, photoIds, photoOwner, embedded, toApp, name, colorFor, traits };
 })();
