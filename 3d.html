@@ -156,7 +156,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadLidar, fetchBuildings, fetchWater, fetchSports, fetchWalls, inBuildings, inPolygon, merc } from './lidar.js';
-import { buildWalls } from './walls.js';
+import { buildWalls, wallMaterial } from './walls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { facadeTexture, buildTerrace, buildEave, BAY, FACADE_H } from './house.js';
@@ -245,7 +245,7 @@ for (const st of water.streams) {
 const SG = new Map(), sgKey = (i, j) => i * 100003 + j;
 streams.forEach((st, si) => { for (let i = 0; i < st.pts.length - 1; i++) { const a = st.pts[i], b = st.pts[i + 1], r = st.w / 2 + 3; for (let gx = Math.floor((Math.min(a.x, b.x) - r) / 10); gx <= Math.floor((Math.max(a.x, b.x) + r) / 10); gx++) for (let gz = Math.floor((Math.min(a.z, b.z) - r) / 10); gz <= Math.floor((Math.max(a.z, b.z) + r) / 10); gz++) { const k = sgKey(gx, gz); if (!SG.has(k)) SG.set(k, []); SG.get(k).push([si, i]); } } });
 function nearestStream(x, z) {
-  let best = null; for (const [si, i] of SG.get(sgKey(Math.floor(x / 10), Math.floor(z / 10))) || []) { const st = streams[si], [d, t] = segDist(x, z, st.pts[i], st.pts[i + 1]); if (!best || d - st.w / 2 < best.d - best.w / 2) best = { d, w: st.w, h: st.h[i] + (st.h[i + 1] - st.h[i]) * t }; }
+  let best = null; for (const [si, i] of SG.get(sgKey(Math.floor(x / 10), Math.floor(z / 10))) || []) { const st = streams[si], [d, t] = segDist(x, z, st.pts[i], st.pts[i + 1]); if (!best || d - st.w / 2 < best.d - best.w / 2) { const a = st.pts[i], b = st.pts[i + 1]; best = { d, w: st.w, h: st.h[i] + (st.h[i + 1] - st.h[i]) * t, fx: a.x + (b.x - a.x) * t, fz: a.z + (b.z - a.z) * t, sx: b.x - a.x, sz: b.z - a.z }; } }
   return best;
 }
 const smooth01 = t => t * t * (3 - 2 * t);
@@ -258,6 +258,22 @@ function lakeDepthAt(x, z) {
     best = Math.max(best, d);
   }
   return best;
+}
+// Point repoussé hors du lit du ruisseau et des étangs (sur la berge)
+function outOfWater(x, z) {
+  let moved = false;
+  for (let pass = 0; pass < 4; pass++) {
+    let ch = false; const ns = nearestStream(x, z);
+    if (ns) { const zone = ns.w / 2 + 1.2; if (ns.d < zone) { let ux = x - ns.fx, uz = z - ns.fz, l = Math.hypot(ux, uz); if (l < 1e-3) { const L = Math.hypot(ns.sx, ns.sz) || 1; ux = -ns.sz / L; uz = ns.sx / L; l = 1; } x = ns.fx + ux / l * zone; z = ns.fz + uz / l * zone; ch = moved = true; } }
+    for (const L of lakes) {
+      if (x < L.bb[0] || x > L.bb[1] || z < L.bb[2] || z > L.bb[3] || !pipL(x, z, L.ring)) continue;
+      let best = null, bd = Infinity;
+      for (let i = 0; i < L.ring.length; i++) { const a = L.ring[i], b = L.ring[(i + 1) % L.ring.length], [d, t] = segDist(x, z, a, b); if (d < bd) { bd = d; best = { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }; } }
+      if (best) { const ux = best.x - x, uz = best.z - z, l = Math.hypot(ux, uz) || 1; x = best.x + ux / l * .8; z = best.z + uz / l * .8; ch = moved = true; }
+    }
+    if (!ch) break;
+  }
+  return moved ? { x, z } : null;
 }
 function carve(x, z, y) {
   for (const L of lakes) {
@@ -303,7 +319,25 @@ function flattenCourts(x, z, y) {
   for (const C of courts) { const [u, v] = C.toCourt(x, z), out = Math.max(Math.abs(u) - C.L / 2, Math.abs(v) - C.W / 2); if (out < 5) { const t = smooth01(clamp((out - 1.8) / 3.2, 0, 1)); y = C.level * (1 - t) + y * t; } }
   return y;
 }
-const groundAt = (lakes.length || streams.length || courts.length) ? (x, z) => flattenCourts(x, z, carve(x, z, rawGround(x, z))) : rawGround;
+const groundBase = (lakes.length || streams.length || courts.length) ? (x, z) => flattenCourts(x, z, carve(x, z, rawGround(x, z))) : rawGround;
+// ---------- Ponts placés sur le plan 2D : passage en pierre couvert de terre et d'herbe, franchissable en balade ----------
+const bridges = features.filter(f => f.type === 'bridge' && f.a && f.b).map(f => {
+  const A = toLocal(...f.a), B = toLocal(...f.b), len = Math.hypot(B.x - A.x, B.z - A.z); if (len < 1) return null;
+  const d = { x: (B.x - A.x) / len, z: (B.z - A.z) / len }, W = clamp(+f.width || 3, 1, 12);
+  // hauteur du tablier : niveau des berges aux deux bouts (le plus haut des deux côtés du tracé), léger bombé
+  const bank = p => Math.max(...[-W / 2, 0, W / 2].map(l => groundBase(p.x - d.z * l, p.z + d.x * l)));
+  return { A, B, len, d, W, hA: bank(A), hB: bank(B), hump: Math.min(.35, len * .03) };
+}).filter(Boolean);
+const deckAt = (b, t) => b.hA + (b.hB - b.hA) * t + b.hump * Math.sin(Math.PI * t);
+function bridgeTop(x, z, y) {
+  for (const b of bridges) {
+    const dx = x - b.A.x, dz = z - b.A.z, t = (dx * b.d.x + dz * b.d.z) / b.len, l = Math.abs(-dx * b.d.z + dz * b.d.x);
+    if (t < 0 || t > 1 || l > b.W / 2) continue;
+    const top = deckAt(b, t) + .05; if (top > y) y = top;
+  }
+  return y;
+}
+const groundAt = bridges.length ? (x, z) => bridgeTop(x, z, groundBase(x, z)) : groundBase;
 
 // ---------- 3. Rendu ----------
 progress('Construction de la scène…', .55);
@@ -373,7 +407,7 @@ if (lidar.chm) { // masque de canopée, même emprise que la photo aérienne
 const M = isTouch ? 193 : 289;
 const tGeo = new THREE.PlaneGeometry(2 * S, 2 * S, M - 1, M - 1); tGeo.rotateX(-Math.PI / 2);
 { const pos = tGeo.attributes.position, uv = tGeo.attributes.uv;
-  for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); pos.setY(k, groundAt(x, z)); uv.setXY(k, ...uvOf(...toLatLon(x, z))); }
+  for (let k = 0; k < pos.count; k++) { const x = pos.getX(k), z = pos.getZ(k); pos.setY(k, groundBase(x, z)); uv.setXY(k, ...uvOf(...toLatLon(x, z))); } // le tablier des ponts est un maillage à part
   tGeo.computeVertexNormals(); }
 const tMat = new THREE.MeshStandardMaterial({ color: ortho ? '#ffffff' : '#7b9a58', map: ortho, roughness: 1 });
 tMat.onBeforeCompile = sh => {
@@ -576,6 +610,41 @@ if (courts.length) {
   const dup = w => { const ps = w.coords.map(c => toLocal(...c)); return segs.length && ps.filter(p => segs.some(sg => distSeg(p, sg) < 2.5)).length >= ps.length * .6; };
   const list = [...manual, ...igWalls.filter(w => !dup(w))];
   if (list.length) scene.add(buildWalls(list, { toLocal, groundAt }));
+}
+
+// Faces du pont : parement de pierre de la berge au tablier, voûte sombre au-dessus de l'eau, bordure de pierre
+if (bridges.length) {
+  const stone = wallMaterial('pierre'), dark = new THREE.MeshStandardMaterial({ color: '#141712', roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, side: THREE.DoubleSide });
+  // Herbe du tablier : texture dessinée (brins, touffes, terre)
+  const gcv = document.createElement('canvas'); gcv.width = gcv.height = 256; const gg = gcv.getContext('2d'); gg.fillStyle = '#5f7f3a'; gg.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 5000; i++) { const v = Math.random(); gg.fillStyle = v < .08 ? 'rgba(110,90,60,.5)' : `rgba(${60 + v * 70 | 0},${100 + v * 70 | 0},${40 + v * 30 | 0},.55)`; gg.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 2, 2 + Math.random() * 4); }
+  const gtex = new THREE.CanvasTexture(gcv); gtex.wrapS = gtex.wrapT = THREE.RepeatWrapping; gtex.colorSpace = THREE.SRGBColorSpace;
+  const grassMat = new THREE.MeshStandardMaterial({ map: gtex, roughness: 1 });
+  for (const b of bridges) { // tablier : bande herbeuse qui suit le bombé
+    const N = Math.max(8, Math.ceil(b.len * 2)), pos = [], uv = [], idx = [];
+    for (let i = 0; i <= N; i++) { const t = i / N, cx = b.A.x + b.d.x * b.len * t, cz = b.A.z + b.d.z * b.len * t, y = deckAt(b, t) + .05;
+      for (const l of [-b.W / 2, b.W / 2]) { pos.push(cx - b.d.z * l, y, cz + b.d.x * l); uv.push((l + b.W / 2) / 1.5, b.len * t / 1.5); }
+      if (i) { const k = (i - 1) * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, grassMat); m.material.side = THREE.DoubleSide; m.receiveShadow = true; scene.add(m);
+  }
+  for (const b of bridges) for (const side of [-1, 1]) {
+    const nx = -b.d.z * side, nz = b.d.x * side, off = b.W / 2 + .02, N = Math.max(8, Math.ceil(b.len * 2)), pos = [], uv = [], idx = [];
+    let low = { t: .5, y: Infinity };
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, x = b.A.x + b.d.x * b.len * t + nx * off, z = b.A.z + b.d.z * b.len * t + nz * off;
+      const top = deckAt(b, t) + .3, bot = Math.min(groundBase(x, z), top - .3) - .3;
+      if (groundBase(x, z) < low.y) low = { t, y: groundBase(x, z), x, z };
+      pos.push(x, bot, z, x, top, z); uv.push(b.len * t / 2, bot / 2, b.len * t / 2, top / 2);
+      if (i) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    const face = new THREE.Mesh(g, stone); face.castShadow = face.receiveShadow = true; scene.add(face);
+    // voûte : demi-cercle sombre centré sur le point le plus bas (le lit du ruisseau)
+    const deck = deckAt(b, low.t), r = clamp(Math.min(deck - low.y - .35, b.len * .35), .4, 2.2);
+    const arch = new THREE.Mesh(new THREE.CircleGeometry(r, 24, 0, Math.PI), dark);
+    arch.position.set(low.x + nx * .03, low.y + .05, low.z + nz * .03); arch.lookAt(low.x + nx * 5, low.y + .05, low.z + nz * 5); scene.add(arch);
+  }
 }
 
 // ---------- 4. Bâtiments : toits reconstruits (LiDAR, sinon altitudes de toit BD TOPO), murs jusqu'au toit ----------
@@ -864,7 +933,7 @@ function trunkGeometry(h, crownBase, rad, shape, r) {
 
 // Mesure LiDAR de chaque arbre relevé
 const lidarTops = [];
-const LITE = isTouch || trees.length > 120;
+const LITE = isTouch || trees.length > 120, waterFixes = [];
 const surveyed = trees.map(t => {
   const tr = D.traits(t), m = lidar.chm ? lidar.crownAt(t.lat, t.lon, clamp(t.corrected ? 2.5 : (t.acc || 4), 2.5, 5)) : null;
   let h = tr.height, rad = tr.crown, measured = false, lidarH = null;
@@ -890,7 +959,10 @@ for (const s of surveyed) {
   // Arbre détaillé : silhouette et feuillage de l'espèce ; couleur et écorce reprises des photos si disponibles
   const det = buildDetailedTree({ tr, h, rad: s.rad, seed: t.id, U, renderer, lite: LITE, density: t.density, branches: t.branches, fitWidth: +t.crownW > 0 || !!s.lean, lean: localLean(s, rotY) });
   g.add(det.group); s.det = det; s.g = g;
-  const p = toLocal(t.lat, t.lon); g.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); g.rotation.y = rotY;
+  let p = toLocal(t.lat, t.lon);
+  const dry = outOfWater(p.x, p.z); // arbre relevé dans l'eau : posé sur la berge, position corrigée enregistrée
+  if (dry) { p = dry; const [la, lo] = toLatLon(dry.x, dry.z); t.lat = la; t.lon = lo; waterFixes.push(t); }
+  g.position.set(p.x, groundAt(p.x, p.z) - .15, p.z); g.rotation.y = rotY;
   const L = { s, pos: new THREE.Vector3(p.x, g.position.y + h + .8, p.z) }; s.lbl = L;
   scene.add(g); pickables.push(g); labelled.push(L);
 }
@@ -904,6 +976,7 @@ function rebuildTree(s, h, density, branches = +s.t.branches || 1, fitWidth = +s
   if (s.photoColor) s.det.setFoliageColor(s.photoColor); if (s.barkTex) s.det.setBark(s.barkTex);
 }
 
+if (waterFixes.length) (async () => { for (const t of waterFixes) { try { await D.saveTree({ id: t.id, lat: t.lat, lon: t.lon, corrected: true, waterMoved: true }, t); } catch (e) {} } warn(`${waterFixes.length} arbre${waterFixes.length > 1 ? 's placés dans l\'eau ont été reposés' : ' placé dans l\'eau a été reposé'} sur la berge.`); })();
 // Couleurs et écorces tirées des photos du terrain (chargées en arrière-plan)
 (async () => {
   for (const s of surveyed) {
@@ -926,7 +999,7 @@ if (lidar.chm) {
   const detected = lidar.detectTrees({
     minHeight: 3,
     exclude: (la, lo) => { if (Math.abs(la - lat0) * mLat > S || Math.abs(lo - lon0) * mLon > S) return true; if (inBuildings(la, lo, buildings, dLat)) return true;
-      { const q = toLocal(la, lo); if (courts.some(C => { const [u, v] = C.toCourt(q.x, q.z); return Math.abs(u) < C.L / 2 + .5 && Math.abs(v) < C.W / 2 + .5; })) return true; if (lakeDepthAt(q.x, q.z) > 1.2) return true; const ns = nearestStream(q.x, q.z); if (ns && ns.d < ns.w * .4) return true; }
+      { const q = toLocal(la, lo); if (courts.some(C => { const [u, v] = C.toCourt(q.x, q.z); return Math.abs(u) < C.L / 2 + .5 && Math.abs(v) < C.W / 2 + .5; })) return true; if (lakeDepthAt(q.x, q.z) > .3) return true; const ns = nearestStream(q.x, q.z); if (ns && ns.d < ns.w / 2 + .8) return true; }
       if (removedPts.some(([a, b]) => Math.hypot((a - la) * mLat, (b - lo) * mLon) < 2)) return true;
       if (surveyed.some(s => Array.isArray(s.t.crownOutline) && s.t.crownOutline.length >= 3 && inPolygon(la, lo, s.t.crownOutline))) return true;
       return surveyed.some(s => Math.hypot((s.t.lat - la) * mLat, (s.t.lon - lo) * mLon) < Math.max(3.5, s.rad * .9)) || lidarTops.some(m => Math.hypot((m.lat - la) * mLat, (m.lon - lo) * mLon) < Math.max(3.5, m.radius * .9)); },

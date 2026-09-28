@@ -74,6 +74,7 @@ function makeTex(mat) {
   for (const t of [map, nrm]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; }
   return { map, nrm };
 }
+export function wallMaterial(mat) { return material(mat); }
 function material(mat) {
   if (cache[mat]) return cache[mat];
   const { map, nrm } = makeTex(mat);
