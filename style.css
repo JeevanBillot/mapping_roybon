@@ -135,3 +135,4 @@ body.immersive main { padding:0; max-width:none; overflow:hidden; }
 .nstep b { min-width:22px; text-align:center; font-size:1.15rem; }
 .clump label { font-size:.85rem; font-weight:500; color:var(--muted); }
 .clump input[type=range] { width:100%; accent-color:var(--accent); }
+.water-lbl { color:#1f5fbf !important; font-style:italic; }

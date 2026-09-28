@@ -19,13 +19,15 @@ PWA à installer sur le téléphone. GPS moyenné + photos + identification Pl@n
 
 **Sur le téléphone** : ouvrir l'URL Pages → « Ajouter à l'écran d'accueil » → ⚙ → coller l'URL du Worker et le mot de passe.
 
-**Navigation** : l'app s'ouvre sur la balade 3D. Menu du bas : 3D, Plan (2D), Arbres (liste ou carte), Relever, Réglages. La 3D et le plan sont intégrés en plein écran et se rechargent quand un arbre est ajouté, déplacé ou supprimé.
+**Navigation** : l'app s'ouvre sur la saisie ; la 3D et le plan ne se chargent qu'à leur ouverture et sont libérés pendant la saisie (mémoire laissée à l'appareil photo). Menu du bas : 3D, Plan (2D), Arbres (liste ou carte), Relever, Réglages. La 3D et le plan sont intégrés en plein écran et se rechargent quand un arbre est ajouté, déplacé ou supprimé.
 
 **Fiche d'un arbre (3D ou plan)** : Déplacer (nouvel emplacement touché sur le plan), Réidentifier l'espèce (Pl@ntNet relancé avec les photos de l'arbre, choix parmi 5), réglage de la hauteur et de la densité du feuillage (3D, aperçu immédiat).
 
 **Balade 3D** : en survol, toucher le sol puis « Me balader ici » (double-clic à la souris) ; en balade tactile, toucher le sol pour y marcher.
 
 **Dupliquer** : bouton copie dans la liste, ou « Dupliquer cet arbre » dans la fiche d'un arbre en 3D ou sur le plan. La copie reprend l'espèce (et les photos de l'original pour le rendu 3D) ; il ne reste qu'à la placer, au GPS ou directement sur la carte.
+
+**Eau** : le ruisseau (et sa zone), l'étang s'affichent sur la carte de repositionnement ; un arbre placé dedans (GPS ou toucher) est repoussé au bord.
 
 **Par arbre** : le GPS s'allume à l'ouverture de l'onglet Relever et sa précision s'affiche en direct. « Je suis à l'arbre » prend la position immédiatement si elle atteint la précision visée (5 m par défaut), sinon attend au plus 10 s (réglables). Puis repositionnement sur une mini-carte au choix : photo aérienne, plan IGN, ou arbres LiDAR (sommets de couronnes mesurés par l'IGN, à toucher pour y placer le point). Les arbres déjà relevés y sont affichés. Ensuite photos feuille / écorce / silhouette (identification automatique), choix, enregistrement.
 

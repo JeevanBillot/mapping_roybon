@@ -63,7 +63,7 @@ function switchView(v) {
   if (v === 'list') renderList();
   if (v === 'map') renderMap();
   // GPS allumé seulement pour relever un arbre (économie de batterie)
-  if (v === 'capture') startWatch(); else if (!current) stopWatch();
+  if (v === 'capture') { startWatch(); freeFrames(); } else if (!current) stopWatch();
 }
 // 3D et plan : pages intégrées, chargées à la première ouverture, rechargées si les arbres ont changé
 function openFrame(v) {
@@ -72,6 +72,8 @@ function openFrame(v) {
   if (framesDirty.has(v)) { framesDirty.delete(v); f.contentWindow.location.reload(); return true; }
   return false;
 }
+// Saisie : 3D et plan déchargés pour laisser la mémoire à l'appareil photo (rechargés à la prochaine ouverture)
+function freeFrames() { for (const v of ['3d', 'plan']) { const f = $('#view-' + v + ' iframe'); if (f) { f.src = 'about:blank'; f.remove(); } } }
 const treesChanged = () => { framesDirty.add('3d'); framesDirty.add('plan'); };
 const setNavH = () => document.documentElement.style.setProperty('--nav-h', $('nav').offsetHeight + 'px');
 addEventListener('resize', setNavH);
@@ -115,6 +117,7 @@ const GPS_OPTS = { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 };
 function onFix(p) {
   const f = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, t: Date.now() };
   gps.fixes.push(f); gps.fixes = gps.fixes.filter(x => f.t - x.t < 15000); gps.last = f; renderGpsLive();
+  if (!water && !waterLoading && f.acc < 100) loadWater(f.lat, f.lon); // eau préchargée pour l'évitement
 }
 function startWatch() {
   if (!navigator.geolocation || gps.wid != null) return;
@@ -181,7 +184,72 @@ async function startGPS() {
 
 // ---------- Carte de repositionnement : photo, plan IGN, arbres LiDAR ----------
 let miniBases = null, miniBase = 'ortho', miniTrees = null, miniLidarLayer = null, lidarCache = null, lidarLoading = null;
-function setCurrentPos(ll, how) { current.lat = ll.lat; current.lon = ll.lng; current.corrected = true; if (how) current.snapped = how; miniMarker.setLatLng(ll); haptic(); }
+function setCurrentPos(ll, how) { current.lat = ll.lat; current.lon = ll.lng; current.corrected = true; if (how) current.snapped = how; keepOutOfWater(); miniMarker.setLatLng([current.lat, current.lon]); haptic(); }
+
+// ---------- Ruisseau et étang (BD TOPO) : affichés sur la carte, un arbre n'y est jamais placé ----------
+let water = null, waterLoading = null, miniWater = null;
+const zoneOf = w => Math.max(1.5, (w || 3) / 2 + .5); // demi-largeur de la zone du ruisseau (m)
+async function loadWater(lat, lon) {
+  const mLat = 111132, mLon = 111320 * Math.cos(lat * Math.PI / 180);
+  if (water && lat > water.latMin + 60 / mLat && lat < water.latMax - 60 / mLat && lon > water.lonMin + 60 / mLon && lon < water.lonMax - 60 / mLon) return water;
+  if (!navigator.onLine) return water;
+  const H = 300, box = { latMin: lat - H / mLat, latMax: lat + H / mLat, lonMin: lon - H / mLon, lonMax: lon + H / mLon };
+  waterLoading = waterLoading || import('./lidar.js').then(Lm => Lm.fetchWater(box.latMin, box.lonMin, box.latMax, box.lonMax)).then(w => Object.assign(box, w));
+  try { water = await waterLoading; } catch (e) { /* pas de réseau : pas d'évitement */ }
+  waterLoading = null; return water;
+}
+// Repousse un point hors des étangs et de la zone du ruisseau (jusqu'au bord, +30 cm)
+function outOfWater(lat, lon) {
+  if (!water) return null;
+  const mLat = 111132, mLon = 111320 * Math.cos(lat * Math.PI / 180), X = (a, b) => ({ x: (b - lon) * mLon, y: (a - lat) * mLat });
+  let px = 0, py = 0, moved = false;
+  const nearestOnSeg = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / L)); return { x: a.x + dx * t, y: a.y + dy * t, dx, dy }; };
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (const s of water.streams) {
+      const z = zoneOf(s.width), P = s.coords.map(([a, b]) => X(a, b)); let best = null, bd = Infinity;
+      for (let i = 0; i < P.length - 1; i++) { const q = nearestOnSeg(P[i], P[i + 1]), d = Math.hypot(px - q.x, py - q.y); if (d < bd) { bd = d; best = q; } }
+      if (best && bd < z) {
+        let ux = px - best.x, uy = py - best.y, l = Math.hypot(ux, uy);
+        if (l < 1e-3) { const L = Math.hypot(best.dx, best.dy) || 1; ux = -best.dy / L; uy = best.dx / L; l = 1; }
+        px = best.x + ux / l * (z + .3); py = best.y + uy / l * (z + .3); changed = moved = true;
+      }
+    }
+    for (const a of water.areas) {
+      const R = a.rings[0].map(([p, q]) => X(p, q)); let ins = false;
+      for (let i = 0, j = R.length - 1; i < R.length; j = i++) if ((R[i].y > py) !== (R[j].y > py) && px < (R[j].x - R[i].x) * (py - R[i].y) / (R[j].y - R[i].y) + R[i].x) ins = !ins;
+      if (!ins) continue;
+      let best = null, bd = Infinity;
+      for (let i = 0; i < R.length - 1; i++) { const q = nearestOnSeg(R[i], R[i + 1]), d = Math.hypot(px - q.x, py - q.y); if (d < bd) { bd = d; best = q; } }
+      if (best) { const ux = best.x - px, uy = best.y - py, l = Math.hypot(ux, uy) || 1; px = best.x + ux / l * .5; py = best.y + uy / l * .5; changed = moved = true; }
+    }
+    if (!changed) break;
+  }
+  return moved ? { lat: lat + py / mLat, lon: lon + px / mLon } : null;
+}
+function keepOutOfWater() {
+  if (!current) return false;
+  const p = outOfWater(current.lat, current.lon); if (!p) return false;
+  current.lat = p.lat; current.lon = p.lon; current.waterMoved = true;
+  if (miniMarker) miniMarker.setLatLng([p.lat, p.lon]);
+  toast('Position repoussée au bord du ruisseau / de l\'étang', 3000); return true;
+}
+function drawMiniWater() {
+  if (!miniMap || !water) return;
+  if (!miniWater) miniWater = L.layerGroup().addTo(miniMap);
+  miniWater.clearLayers();
+  for (const a of water.areas) L.polygon(a.rings, { color: '#4aa8ff', weight: 2, fillColor: '#4aa8ff', fillOpacity: .28, interactive: false }).addTo(miniWater);
+  for (const s of water.streams) {
+    const z = zoneOf(s.width), mLat = 111132;
+    for (let i = 0; i < s.coords.length - 1; i++) { // zone du ruisseau : bande de largeur 2 × z
+      const [a1, b1] = s.coords[i], [a2, b2] = s.coords[i + 1], mLon = 111320 * Math.cos(a1 * Math.PI / 180), dx = (b2 - b1) * mLon, dy = (a2 - a1) * mLat, L2 = Math.hypot(dx, dy) || 1, ox = -dy / L2 * z, oy = dx / L2 * z;
+      L.polygon([[a1 + oy / mLat, b1 + ox / mLon], [a2 + oy / mLat, b2 + ox / mLon], [a2 - oy / mLat, b2 - ox / mLon], [a1 - oy / mLat, b1 - ox / mLon]], { stroke: false, fillColor: '#4aa8ff', fillOpacity: .25, interactive: false }).addTo(miniWater);
+      L.circle([a1, b1], { radius: z, stroke: false, fillColor: '#4aa8ff', fillOpacity: .25, interactive: false }).addTo(miniWater);
+    }
+    L.polyline(s.coords, { color: '#1f7bff', weight: 3, opacity: .9, interactive: false }).addTo(miniWater);
+    if (s.name) L.polyline(s.coords, { opacity: 0, interactive: false }).bindTooltip(s.name, { permanent: true, direction: 'center', className: 'mini-lbl water-lbl' }).addTo(miniWater);
+  }
+}
 function showMiniMap() {
   if (!hasLeaflet()) { $('#mini-map').textContent = 'Carte indisponible hors ligne'; return; }
   if (!miniMap) {
@@ -200,7 +268,8 @@ function showMiniMap() {
   }
   miniMarker.setLatLng([current.lat, current.lon]);
   miniMap.setView([current.lat, current.lon], 20);
-  drawMiniTrees();
+  drawMiniTrees(); drawMiniWater();
+  loadWater(current.lat, current.lon).then(() => { if (current) { keepOutOfWater(); drawMiniWater(); } });
   if (miniBase === 'lidar') loadMiniLidar();
   setTimeout(() => miniMap.invalidateSize(), 60);
 }
@@ -348,6 +417,7 @@ $('#btn-save').addEventListener('click', async () => {
   for (let i = 0; i < n; i++) {
     const r = n > 1 ? R * Math.sqrt((i + .5) / n) : 0, a = i * 2.39996, t = i ? { ...tree, id: `${tree.id}-${i + 1}`, organs: [] } : tree;
     t.lat = lat0 + r * Math.sin(a) / mLat; t.lon = lon0 + r * Math.cos(a) / mLon;
+    const pw = outOfWater(t.lat, t.lon); if (pw) { t.lat = pw.lat; t.lon = pw.lon; } // jamais dans le ruisseau ni l'étang
     if (n > 1) { t.clump = tree.id; t.clumpN = n; }
     if (i) { const o = tree.organs.length ? { id: tree.id, organs: tree.organs } : tree.photoFrom; if (o) t.photoFrom = o; }
     list.push(t);
@@ -467,7 +537,7 @@ $('#btn-export').addEventListener('click', async () => {
 });
 
 // ---------- Réglages ----------
-$('#btn-save-settings').addEventListener('click', () => { settings.proxyUrl = $('#proxy-url').value.trim(); settings.appToken = $('#app-token').value.trim(); settings.gpsTarget = +$('#gps-target').value || 5; settings.gpsMaxWait = +$('#gps-maxwait').value || 10; renderGpsLive(); toast('Réglages enregistrés'); treesChanged(); switchView('3d'); sync(true); });
+$('#btn-save-settings').addEventListener('click', () => { settings.proxyUrl = $('#proxy-url').value.trim(); settings.appToken = $('#app-token').value.trim(); settings.gpsTarget = +$('#gps-target').value || 5; settings.gpsMaxWait = +$('#gps-maxwait').value || 10; renderGpsLive(); toast('Réglages enregistrés'); treesChanged(); switchView('capture'); sync(true); });
 $('#btn-wipe').addEventListener('click', async () => { if (!confirm('Effacer les données de ce téléphone ? Le cloud n\'est pas touché.')) return; await tx('trees', 'readwrite', s => s.clear()); await tx('photos', 'readwrite', s => s.clear()); updateCount(); toast('Données locales effacées'); });
 
 // ---------- Mises à jour automatiques ----------
@@ -489,7 +559,7 @@ function setupUpdates() {
 (async () => {
   await openDB();
   $('#proxy-url').value = settings.proxyUrl; $('#app-token').value = settings.appToken; $('#gps-target').value = settings.gpsTarget; $('#gps-maxwait').value = settings.gpsMaxWait;
-  updateCount(); resetCapture(); setNavH(); switchView('3d'); renderGpsLive();
+  updateCount(); resetCapture(); setNavH(); switchView('capture'); renderGpsLive();
   setupUpdates();
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if (!settings.proxyUrl) { toast('Commence par les Réglages : URL du relais et mot de passe', 4000); } else sync();
