@@ -77,6 +77,16 @@ body:not(.ui-hidden) #show-ui { display:none; }
 #card-del { display:none; } .card.other-mode #card-del { display:flex; margin-top:12px; background:#b3261e; color:#fff; } .card.other-mode #card-del.undo { background:var(--accent-soft); color:var(--accent); }
 .card.other-mode .edit, .card.other-mode .reidbox, .card.other-mode .acts { display:none !important; }
 .card .edst { font-size:.78rem; color:var(--accent); min-height:1em; margin-top:4px; }
+#cropper { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding:12px; }
+#cropper .cbox { background:var(--card); border-radius:16px; padding:12px; width:min(520px, 100%); max-height:100%; overflow:auto; box-shadow:var(--shadow); }
+#cropper .chead { font-weight:700; margin-bottom:8px; }
+#cropper .cimg { position:relative; touch-action:none; user-select:none; } #cropper .cimg img { width:100%; display:block; border-radius:8px; pointer-events:none; }
+#crop-sel { position:absolute; border:2px solid #fff; box-shadow:0 0 0 9999px rgba(0,0,0,.45); cursor:move; }
+#crop-sel i { position:absolute; right:-11px; bottom:-11px; width:22px; height:22px; border-radius:50%; background:#fff; border:3px solid var(--accent); cursor:nwse-resize; }
+#cropper p { font-size:.8rem; color:var(--muted); margin:8px 0; }
+#cropper .cacts { display:flex; gap:6px; flex-wrap:wrap; } #cropper .cacts button { flex:1; border:0; border-radius:10px; padding:9px; font:600 .82rem system-ui; font-family:inherit; cursor:pointer; background:var(--accent-soft); color:var(--accent); }
+#cropper .cacts .pri { background:var(--accent); color:#fff; }
+.card #ed-bark { display:flex; margin-top:8px; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
@@ -119,6 +129,12 @@ body:not(.ui-hidden) #show-ui { display:none; }
 </div>
 
 <div id="tip" class="hidden"></div>
+<div id="cropper" class="hidden"><div class="cbox">
+  <div class="chead">Cadrer l'écorce du tronc</div>
+  <div class="cimg" id="crop-wrap"><img id="crop-img" alt=""><div id="crop-sel"><i></i></div></div>
+  <p>Ne garde que l'écorce (ni ciel ni feuillage) : glisse le carré, tire son coin pour l'agrandir.</p>
+  <div class="cacts"><button id="crop-none">Écorce type de l'espèce</button><button id="crop-cancel">Annuler</button><button id="crop-ok" class="pri">Appliquer</button></div>
+</div></div>
 <button id="goto" class="hidden"><svg class="i"><use href="#i-walk"/></svg>Me balader ici</button>
 <div id="cross" class="hidden"></div>
 <div id="joy" class="hidden"><div></div></div>
@@ -134,6 +150,7 @@ body:not(.ui-hidden) #show-ui { display:none; }
       <label>Feuillage <b id="ed-dv"></b></label><input id="ed-d" type="range" min="0.3" max="2" step="0.1">
       <label>Branches <b id="ed-bv"></b></label><input id="ed-b" type="range" min="0.4" max="2.5" step="0.1">
       <label>Largeur <b id="ed-wv"></b><button id="ed-wauto" class="mini hidden">Auto</button></label><input id="ed-w" type="range" min="1" max="30" step="0.5">
+      <button id="ed-bark" class="dup">Recadrer la photo d'écorce</button>
       <div id="ed-status" class="edst"></div>
     </div>
     <div class="acts"><button id="card-move" class="dup">Déplacer</button><button id="card-dup" class="dup">Dupliquer</button></div></div>
@@ -612,38 +629,43 @@ if (courts.length) {
   if (list.length) scene.add(buildWalls(list, { toLocal, groundAt }));
 }
 
-// Faces du pont : parement de pierre de la berge au tablier, voûte sombre au-dessus de l'eau, bordure de pierre
+// Pont : tablier herbeux texturé comme le terrain alentour (photo aérienne), bombé ; têtes de pont en moellons
+// qui ne dépassent pas de l'herbe, voûte bordée de claveaux au-dessus du ruisseau
 if (bridges.length) {
-  const stone = wallMaterial('pierre'), dark = new THREE.MeshStandardMaterial({ color: '#141712', roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, side: THREE.DoubleSide });
-  // Herbe du tablier : texture dessinée (brins, touffes, terre)
-  const gcv = document.createElement('canvas'); gcv.width = gcv.height = 256; const gg = gcv.getContext('2d'); gg.fillStyle = '#5f7f3a'; gg.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 5000; i++) { const v = Math.random(); gg.fillStyle = v < .08 ? 'rgba(110,90,60,.5)' : `rgba(${60 + v * 70 | 0},${100 + v * 70 | 0},${40 + v * 30 | 0},.55)`; gg.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 2, 2 + Math.random() * 4); }
-  const gtex = new THREE.CanvasTexture(gcv); gtex.wrapS = gtex.wrapT = THREE.RepeatWrapping; gtex.colorSpace = THREE.SRGBColorSpace;
-  const grassMat = new THREE.MeshStandardMaterial({ map: gtex, roughness: 1 });
-  for (const b of bridges) { // tablier : bande herbeuse qui suit le bombé
-    const N = Math.max(8, Math.ceil(b.len * 2)), pos = [], uv = [], idx = [];
-    for (let i = 0; i <= N; i++) { const t = i / N, cx = b.A.x + b.d.x * b.len * t, cz = b.A.z + b.d.z * b.len * t, y = deckAt(b, t) + .05;
-      for (const l of [-b.W / 2, b.W / 2]) { pos.push(cx - b.d.z * l, y, cz + b.d.x * l); uv.push((l + b.W / 2) / 1.5, b.len * t / 1.5); }
-      if (i) { const k = (i - 1) * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); } }
+  const stone = wallMaterial('pierre').clone(); stone.color.set('#9a9384'); stone.map = stone.map.clone(); stone.map.needsUpdate = true;
+  const dark = new THREE.MeshStandardMaterial({ color: '#0f120e', roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, side: THREE.DoubleSide });
+  const deckMat = tMat.clone(); deckMat.side = THREE.DoubleSide;
+  for (const b of bridges) {
+    // tablier : bandes transversales (bombé au centre de 8 cm), léger débord de l'herbe au-dessus des têtes de pont
+    const N = Math.max(10, Math.ceil(b.len * 3)), C = 6, pos = [], uv = [], idx = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, cx = b.A.x + b.d.x * b.len * t, cz = b.A.z + b.d.z * b.len * t, y0 = deckAt(b, t) + .04;
+      for (let j = 0; j <= C; j++) {
+        const u = j / C, l = (u - .5) * (b.W + .12), x = cx - b.d.z * l, z = cz + b.d.x * l, y = y0 + .08 * (1 - (2 * u - 1) ** 2);
+        pos.push(x, y, z); uv.push(...uvOf(...toLatLon(x, z)));
+        if (i && j) { const k = i * (C + 1) + j; idx.push(k - C - 2, k - 1, k - C - 1, k - C - 1, k - 1, k); }
+      }
+    }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, grassMat); m.material.side = THREE.DoubleSide; m.receiveShadow = true; scene.add(m);
+    const deck = new THREE.Mesh(g, deckMat); deck.receiveShadow = true; scene.add(deck);
   }
   for (const b of bridges) for (const side of [-1, 1]) {
-    const nx = -b.d.z * side, nz = b.d.x * side, off = b.W / 2 + .02, N = Math.max(8, Math.ceil(b.len * 2)), pos = [], uv = [], idx = [];
+    const nx = -b.d.z * side, nz = b.d.x * side, off = b.W / 2, N = Math.max(10, Math.ceil(b.len * 3)), pos = [], uv = [], idx = [];
     let low = { t: .5, y: Infinity };
     for (let i = 0; i <= N; i++) {
-      const t = i / N, x = b.A.x + b.d.x * b.len * t + nx * off, z = b.A.z + b.d.z * b.len * t + nz * off;
-      const top = deckAt(b, t) + .3, bot = Math.min(groundBase(x, z), top - .3) - .3;
-      if (groundBase(x, z) < low.y) low = { t, y: groundBase(x, z), x, z };
-      pos.push(x, bot, z, x, top, z); uv.push(b.len * t / 2, bot / 2, b.len * t / 2, top / 2);
+      const t = i / N, x = b.A.x + b.d.x * b.len * t + nx * off, z = b.A.z + b.d.z * b.len * t + nz * off, gnd = groundBase(x, z);
+      const top = deckAt(b, t) + .02, bot = Math.min(gnd - .35, top);            // pierre seulement là où le sol descend sous le tablier
+      if (gnd < low.y) low = { t, y: gnd, x, z };
+      pos.push(x, bot, z, x, top, z); uv.push(b.len * t, bot, b.len * t, top);   // 1 m par motif : moellons à l'échelle
       if (i) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
     const face = new THREE.Mesh(g, stone); face.castShadow = face.receiveShadow = true; scene.add(face);
-    // voûte : demi-cercle sombre centré sur le point le plus bas (le lit du ruisseau)
-    const deck = deckAt(b, low.t), r = clamp(Math.min(deck - low.y - .35, b.len * .35), .4, 2.2);
-    const arch = new THREE.Mesh(new THREE.CircleGeometry(r, 24, 0, Math.PI), dark);
-    arch.position.set(low.x + nx * .03, low.y + .05, low.z + nz * .03); arch.lookAt(low.x + nx * 5, low.y + .05, low.z + nz * 5); scene.add(arch);
+    // voûte au-dessus du lit, bordée de claveaux
+    const top = deckAt(b, low.t), r = clamp(Math.min(top - low.y - .45, b.len * .3), .35, 2);
+    const ax = low.x + nx * .02, az = low.z + nz * .02, ay = low.y - .05;
+    const arch = new THREE.Mesh(new THREE.CircleGeometry(r, 28, 0, Math.PI), dark); arch.position.set(ax, ay, az); arch.lookAt(ax + nx, ay, az + nz); scene.add(arch);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + .22, 28, 1, 0, Math.PI), stone); ring.position.set(ax + nx * .03, ay, az + nz * .03); ring.lookAt(ax + nx * 2, ay, az + nz * 2); scene.add(ring);
   }
 }
 
@@ -984,7 +1006,7 @@ if (waterFixes.length) (async () => { for (const t of waterFixes) { try { await 
     const organs = own.organs, id = o => `${own.id}_${o}`;
     const colorSrc = organs.includes('leaf') ? 'leaf' : organs.includes('habit') ? 'habit' : null;
     if (colorSrc) { const u = await D.photoURL(id(colorSrc)); if (u) { const c = await photoFoliageColor(u); if (c) { s.photoColor = c; s.det.setFoliageColor(c); } } }
-    if (organs.includes('bark')) { const u = await D.photoURL(id('bark')); if (u) { const tx = await photoBarkTexture(u, renderer); if (tx) { s.barkTex = tx; s.det.setBark(tx); } } }
+    if (organs.includes('bark') && s.t.barkCrop !== 'none') { const u = await D.photoURL(id('bark')); if (u) { const tx = await photoBarkTexture(u, renderer, s.t.barkCrop); if (tx) { s.barkTex = tx; s.det.setBark(tx); } } }
   }
 })();
 
@@ -1159,7 +1181,40 @@ function showCard(s) {
   hIn.onchange = dIn.onchange = bIn.onchange = wIn.onchange = apply;
   $('#ed-auto').onclick = () => { manualH = null; hIn.value = auto(); show(); apply(); };
   $('#ed-wauto').onclick = () => { manualW = null; wIn.value = autoW(); show(); apply(); };
+  // Recadrage de la photo d'écorce
+  const own = D.photoOwner(t), hasBark = !!(own && own.organs.includes('bark'));
+  $('#ed-bark').classList.toggle('hidden', !hasBark);
+  $('#ed-bark').onclick = async () => { const u = await D.photoURL(`${own.id}_bark`); if (u) openCropper(s, u); };
   $('#card').classList.remove('hidden');
+}
+// Cadreur : carré déplaçable et redimensionnable sur la photo ; enregistre le cadrage dans l'arbre
+function openCropper(s, url) {
+  const t = s.t, img = $('#crop-img'), sel = $('#crop-sel'), wrap = $('#crop-wrap');
+  let box = null; // en pixels affichés
+  const place = () => { sel.style.left = box.x + 'px'; sel.style.top = box.y + 'px'; sel.style.width = sel.style.height = box.s + 'px'; };
+  img.onload = () => {
+    const W = img.clientWidth, H = img.clientHeight, c = t.barkCrop && t.barkCrop.w ? t.barkCrop : null;
+    box = c ? { x: c.x * W, y: c.y * H, s: c.w * W } : (() => { const s0 = Math.min(W, H) * .6; return { x: (W - s0) / 2, y: (H - s0) / 2, s: s0 }; })();
+    place();
+  };
+  img.src = url; $('#cropper').classList.remove('hidden');
+  let drag = null;
+  sel.onpointerdown = e => { e.preventDefault(); sel.setPointerCapture(e.pointerId); drag = { mode: e.target.tagName === 'I' ? 'size' : 'move', x: e.clientX, y: e.clientY, b: { ...box } }; };
+  sel.onpointermove = e => {
+    if (!drag) return; const W = img.clientWidth, H = img.clientHeight, dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (drag.mode === 'move') { box.x = clamp(drag.b.x + dx, 0, W - box.s); box.y = clamp(drag.b.y + dy, 0, H - box.s); }
+    else box.s = clamp(drag.b.s + Math.max(dx, dy), 40, Math.min(W - box.x, H - box.y));
+    place();
+  };
+  sel.onpointerup = sel.onpointercancel = () => { drag = null; };
+  const close = () => $('#cropper').classList.add('hidden');
+  const save = async crop => { try { await D.saveTree({ id: t.id, barkCrop: crop }, t); t.barkCrop = crop; t.updated = Date.now(); } catch (e) { warn('Cadrage non enregistré : ' + e.message); } };
+  $('#crop-cancel').onclick = close;
+  $('#crop-ok').onclick = async () => {
+    const W = img.clientWidth, H = img.clientHeight, crop = { x: box.x / W, y: box.y / H, w: box.s / W, h: box.s / H };
+    close(); const tx = await photoBarkTexture(url, renderer, crop); if (tx) { s.barkTex = tx; s.det.setBark(tx); } save(crop);
+  };
+  $('#crop-none').onclick = () => { close(); s.barkTex = null; t.barkCrop = 'none'; rebuildTree(s, s.h, +t.density || 1); save('none'); };
 }
 const BRAN = b => b <= .6 ? 'beaucoup moins' : b <= .85 ? 'moins' : b < 1.15 ? 'normal' : b < 1.7 ? 'plus' : 'beaucoup plus';
 const DENS = d => d <= .55 ? 'très clairsemé' : d <= .85 ? 'clairsemé' : d < 1.15 ? 'normal' : d < 1.5 ? 'dense' : 'très dense';

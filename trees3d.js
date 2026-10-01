@@ -18,7 +18,7 @@ function tex(file, srgb = true, renderer) {
 }
 // Rameau photographié par type de feuille, et sa couleur moyenne (pour recaler la teinte)
 const LEAF = {
-  lobed: ['leaf_oak.png', '#5f7d35'], lanceolate: ['leaf_ash.png', '#557931'], ovate: ['leaf_round.png', '#709b3d'], palmate: ['leaf_oak.png', '#5f7d35'],
+  lobed: ['leaf_oak.png', '#5f7d35'], pinnate: ['leaf_ash.png', '#557931'], lanceolate: ['leaf_long.png', '#4c682a'], ovate: ['leaf_round.png', '#709b3d'], palmate: ['leaf_oak.png', '#5f7d35'],
   crepe: ['leaf_crepe.png', '#948454'], cordate: ['leaf_round.png', '#709b3d'], round: ['leaf_round.png', '#709b3d'], fan: ['leaf_round.png', '#709b3d'], needle: ['leaf_pine.png', '#596f29'], scale: ['leaf_pine.png', '#596f29'],
 };
 const BARK = { furrowed: 'oak', ridged: 'willow', fibrous: 'willow', plates: 'pine', birch: 'birch' }; // 'smooth' : texture dessinée
@@ -76,10 +76,12 @@ export async function photoFoliageColor(url) {
   } catch (e) { return null; }
 }
 /* Texture d'écorce tirée de la photo (partie centrale, répétée en miroir pour masquer les raccords). */
-export async function photoBarkTexture(url, renderer) {
+// crop : { x, y, w, h } en fractions de la photo (cadrage choisi dans la fiche), sinon carré central à 60 %
+export async function photoBarkTexture(url, renderer, crop) {
   try {
-    const im = await loadImg(url), side = Math.min(im.width, im.height) * .6, S = 512, cv = document.createElement('canvas'); cv.width = cv.height = S;
-    cv.getContext('2d').drawImage(im, (im.width - side) / 2, (im.height - side) / 2, side, side, 0, 0, S, S);
+    const im = await loadImg(url), S = 512, cv = document.createElement('canvas'); cv.width = cv.height = S;
+    if (crop && crop.w > 0 && crop.h > 0) cv.getContext('2d').drawImage(im, crop.x * im.width, crop.y * im.height, crop.w * im.width, crop.h * im.height, 0, 0, S, S);
+    else { const side = Math.min(im.width, im.height) * .6; cv.getContext('2d').drawImage(im, (im.width - side) / 2, (im.height - side) / 2, side, side, 0, 0, S, S); }
     const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
     return t;
   } catch (e) { return null; }
